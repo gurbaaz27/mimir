@@ -6,6 +6,8 @@ export interface DocumentRecord {
   id: string
   fingerprint: string
   name: string
+  /** Stable, human-readable route segment for this local document. */
+  routeSlug?: string
   size: number
   pageCount: number
   blob: Blob
