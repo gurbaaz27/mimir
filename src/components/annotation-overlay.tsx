@@ -119,7 +119,7 @@ function AnnotationGlyph({ annotation, selected }: { annotation: Annotation; sel
           {annotation.body && (
             <foreignObject
               x={Math.min(annotation.point.x + 0.022, 0.72)}
-              y={Math.max(0.01, annotation.point.y - 0.016)}
+              y={Math.min(Math.max(0.01, annotation.point.y - 0.016), 0.89)}
               width="0.26"
               height="0.11"
               className="note-preview-object"
