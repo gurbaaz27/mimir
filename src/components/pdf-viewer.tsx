@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { Annotation } from '#/lib/annotations'
-import { useEditorStore } from '#/lib/editor-store.client'
+import { editorStore, useEditorStore } from '#/lib/editor-store.client'
 import { PdfPage } from './pdf-page'
 
 interface PdfViewerProps {
@@ -26,6 +26,20 @@ export function PdfViewer({ pdf, pageCount, zoom, rotation, annotations }: PdfVi
     overscan: 1,
     gap: 28,
   })
+
+  useEffect(() => {
+    const unsubscribe = editorStore.subscribe((state, previousState) => {
+      if (previousState.tool !== 'pan' || state.tool === 'pan') return
+      const scroller = scrollerRef.current
+      const pointerId = panRef.current?.pointerId
+      if (scroller && pointerId !== undefined && scroller.hasPointerCapture(pointerId)) {
+        scroller.releasePointerCapture(pointerId)
+      }
+      panRef.current = null
+      setIsPanning(false)
+    })
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     setMaxPageWidth(612 * zoom)
@@ -62,6 +76,7 @@ export function PdfViewer({ pdf, pageCount, zoom, rotation, annotations }: PdfVi
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const pan = panRef.current
     if (!pan || pan.pointerId !== event.pointerId) return
+    if (editorStore.getState().tool !== 'pan') return
     const scroller = event.currentTarget
     event.preventDefault()
     scroller.scrollLeft = pan.scrollLeft - (event.clientX - pan.clientX)
