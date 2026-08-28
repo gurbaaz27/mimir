@@ -110,11 +110,24 @@ function AnnotationGlyph({ annotation, selected }: { annotation: Annotation; sel
         </foreignObject>
       )}
       {annotation.kind === 'note' && (
-        <foreignObject x={annotation.point.x - 0.016} y={annotation.point.y - 0.016} width="0.04" height="0.04" className="note-annotation-object">
-          <div style={{ background: annotation.style.color }} aria-label={annotation.body || 'Empty note'}>
-            <span />
-          </div>
-        </foreignObject>
+        <>
+          <foreignObject x={annotation.point.x - 0.016} y={annotation.point.y - 0.016} width="0.04" height="0.04" className="note-annotation-object">
+            <div style={{ background: annotation.style.color }} aria-label={annotation.body || 'Empty note'}>
+              <span />
+            </div>
+          </foreignObject>
+          {annotation.body && (
+            <foreignObject
+              x={Math.min(annotation.point.x + 0.022, 0.72)}
+              y={Math.max(0.01, annotation.point.y - 0.016)}
+              width="0.26"
+              height="0.11"
+              className="note-preview-object"
+            >
+              <div>{annotation.body}</div>
+            </foreignObject>
+          )}
+        </>
       )}
       {selected && bounds && (
         <rect

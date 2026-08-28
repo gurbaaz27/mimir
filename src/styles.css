@@ -182,13 +182,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .note-annotation-object { overflow: visible; pointer-events: all; }
 .note-annotation-object div { position: relative; width: 100%; height: 100%; min-width: 16px; min-height: 16px; border: 1px solid oklch(0.3 0.04 75 / .35); border-radius: 50% 50% 50% 7%; box-shadow: 0 2px 5px oklch(0.2 0.04 75 / .2); }
 .note-annotation-object span { position: absolute; inset: 31%; border-top: 1px solid white; border-bottom: 1px solid white; opacity: .9; }
+.note-preview-object { overflow: visible; pointer-events: none; }
+.note-preview-object div { display: -webkit-box; overflow: hidden; max-height: 100%; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--ink); background: oklch(1 0 0 / .96); box-shadow: 0 2px 7px oklch(0.2 0.02 188 / .14); font: 500 10px/1.35 "Inter Variable", sans-serif; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 
 /* Side panels */
 .document-sidebar, .annotation-inspector { min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); }
 .document-sidebar { border-right: 1px solid var(--border); }
-.sidebar-tabs { display: flex; height: 42px; padding: 5px; gap: 3px; border-bottom: 1px solid var(--border); }
+.sidebar-header { display: flex; height: 42px; align-items: center; padding: 5px 5px 5px 5px; gap: 2px; border-bottom: 1px solid var(--border); }
+.sidebar-tabs { display: flex; min-width: 0; flex: 1; height: 32px; gap: 3px; }
 .sidebar-tabs button { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 10px; }
 .sidebar-tabs button[aria-selected="true"] { color: var(--ink); background: white; box-shadow: 0 1px 2px oklch(0.2 0.02 188 / .08); }
+.close-sidebar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; padding: 0; place-items: center; border: 0; border-radius: 7px; color: var(--muted); background: transparent; }
+.close-sidebar:hover { background: var(--bg); }
 .thumbnail-scroll { height: calc(100% - 42px); overflow: auto; }
 .thumbnail-item { position: absolute; top: 0; left: 0; display: flex; width: 100%; justify-content: center; padding: 13px 10px 9px; }
 .thumbnail-button { display: flex; width: 142px; min-height: 142px; flex-direction: column; align-items: center; gap: 7px; padding: 6px; border: 1px solid transparent; border-radius: 7px; background: transparent; }
