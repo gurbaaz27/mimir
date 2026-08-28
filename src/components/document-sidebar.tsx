@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bookmark, ListTree } from 'lucide-react'
+import { Bookmark, ListTree, X } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import { useEditorStore } from '#/lib/editor-store.client'
@@ -44,6 +44,7 @@ function Thumbnail({ pdf, pageNumber, active }: { pdf: PDFDocumentProxy; pageNum
 export function DocumentSidebar({ pdf }: { pdf: PDFDocumentProxy }) {
   const currentPage = useEditorStore((state) => state.currentPage)
   const pageCount = useEditorStore((state) => state.activeDocument?.pageCount ?? 0)
+  const setSidebarOpen = useEditorStore((state) => state.setSidebarOpen)
   const [tab, setTab] = useState<'pages' | 'outline'>('pages')
   const [outline, setOutline] = useState<Array<{ title: string; pageNumber?: number }>>([])
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -81,12 +82,17 @@ export function DocumentSidebar({ pdf }: { pdf: PDFDocumentProxy }) {
 
   return (
     <aside className="document-sidebar" aria-label="Document navigation">
-      <div className="sidebar-tabs" role="tablist" aria-label="Navigation view">
-        <button type="button" role="tab" aria-selected={tab === 'pages'} onClick={() => setTab('pages')}>
-          <Bookmark size={15} /> Pages
-        </button>
-        <button type="button" role="tab" aria-selected={tab === 'outline'} onClick={() => setTab('outline')}>
-          <ListTree size={15} /> Outline
+      <div className="sidebar-header">
+        <div className="sidebar-tabs" role="tablist" aria-label="Navigation view">
+          <button type="button" role="tab" aria-selected={tab === 'pages'} onClick={() => setTab('pages')}>
+            <Bookmark size={15} /> Pages
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'outline'} onClick={() => setTab('outline')}>
+            <ListTree size={15} /> Outline
+          </button>
+        </div>
+        <button className="close-sidebar" type="button" aria-label="Close document navigation" onClick={() => setSidebarOpen(false)}>
+          <X size={16} />
         </button>
       </div>
       {tab === 'pages' ? (
