@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Bot,
@@ -17,7 +17,7 @@ import {
 import { Dialog, DropdownMenu, Tooltip } from 'radix-ui'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { Annotation } from '#/lib/annotations'
-import { useEditorStore } from '#/lib/editor-store.client'
+import { editorStore, useEditorStore, type EditorTool } from '#/lib/editor-store.client'
 import { loadPdf } from '#/lib/pdf.client'
 import { useWebMcp } from '#/lib/webmcp.client'
 import { AnnotationInspector } from './annotation-inspector'
@@ -60,7 +60,15 @@ export function ReaderWorkspace() {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'pdf' | 'json'>('pdf')
   const [exportProgress, setExportProgress] = useState<number | null>(null)
+  const temporaryPanTool = useRef<EditorTool | null>(null)
   const webMcpStatus = useWebMcp(activeDocument?.id ?? null)
+
+  const restoreTemporaryPan = () => {
+    const previousTool = temporaryPanTool.current
+    if (!previousTool) return
+    temporaryPanTool.current = null
+    if (editorStore.getState().tool === 'pan') editorStore.getState().setTool(previousTool)
+  }
 
   useEffect(() => {
     if (!activeDocument) return
@@ -89,6 +97,21 @@ export function ReaderWorkspace() {
   }, [])
 
   useEffect(() => {
+    const unsubscribe = editorStore.subscribe((state, previousState) => {
+      if (temporaryPanTool.current && state.tool !== previousState.tool && state.tool !== 'pan') {
+        temporaryPanTool.current = null
+      }
+    })
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    restoreTemporaryPan()
+  }, [activeDocument?.id])
+
+  useEffect(() => () => restoreTemporaryPan(), [])
+
+  useEffect(() => {
     const shortcuts: Record<string, () => void> = {
       v: () => setTool('select'),
       h: () => setTool('highlight'),
@@ -103,6 +126,15 @@ export function ReaderWorkspace() {
     const keydown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target?.matches('input, textarea, [contenteditable="true"]')) return
+      if (event.code === 'Space' && !event.repeat) {
+        event.preventDefault()
+        const currentTool = editorStore.getState().tool
+        if (currentTool !== 'pan') {
+          temporaryPanTool.current = currentTool
+          setTool('pan')
+        }
+        return
+      }
       const key = event.key.toLowerCase()
       if ((event.metaKey || event.ctrlKey) && key === 'z') {
         event.preventDefault()
@@ -119,8 +151,19 @@ export function ReaderWorkspace() {
         shortcuts[key]?.()
       }
     }
+    const keyup = (event: KeyboardEvent) => {
+      if (event.code !== 'Space') return
+      event.preventDefault()
+      restoreTemporaryPan()
+    }
     window.addEventListener('keydown', keydown)
-    return () => window.removeEventListener('keydown', keydown)
+    window.addEventListener('keyup', keyup)
+    window.addEventListener('blur', restoreTemporaryPan)
+    return () => {
+      window.removeEventListener('keydown', keydown)
+      window.removeEventListener('keyup', keyup)
+      window.removeEventListener('blur', restoreTemporaryPan)
+    }
   }, [deleteAnnotations, redo, selectedId, setSearchOpen, setTool, undo])
 
   useEffect(() => {

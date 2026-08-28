@@ -12,9 +12,10 @@ interface PdfPageProps {
   zoom: number
   rotation: number
   annotations: Array<Annotation>
+  onPageWidth?: (width: number) => void
 }
 
-export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations }: PdfPageProps) {
+export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations, onPageWidth }: PdfPageProps) {
   const pageRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textRef = useRef<HTMLDivElement>(null)
@@ -49,6 +50,7 @@ export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations }: PdfPag
       if (cancelled) return
       const viewport = page.getViewport({ scale: zoom, rotation: page.rotate + rotation })
       setDimensions({ width: viewport.width, height: viewport.height })
+      onPageWidth?.(viewport.width)
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       const canvas = canvasRef.current
       const textContainer = textRef.current
