@@ -109,6 +109,8 @@ export function ReaderWorkspace() {
     restoreTemporaryPan()
   }, [activeDocument?.id])
 
+  useEffect(() => () => restoreTemporaryPan(), [])
+
   useEffect(() => {
     const shortcuts: Record<string, () => void> = {
       v: () => setTool('select'),
@@ -158,7 +160,6 @@ export function ReaderWorkspace() {
     window.addEventListener('keyup', keyup)
     window.addEventListener('blur', restoreTemporaryPan)
     return () => {
-      restoreTemporaryPan()
       window.removeEventListener('keydown', keydown)
       window.removeEventListener('keyup', keyup)
       window.removeEventListener('blur', restoreTemporaryPan)
