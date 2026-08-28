@@ -40,6 +40,7 @@ export function ReaderWorkspace() {
   const history = useEditorStore((state) => state.history)
   const future = useEditorStore((state) => state.future)
   const selectedId = useEditorStore((state) => state.selectedAnnotationId)
+  const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
   const closeDocument = useEditorStore((state) => state.closeDocument)
   const setCurrentPage = useEditorStore((state) => state.setCurrentPage)
   const setZoom = useEditorStore((state) => state.setZoom)
@@ -172,7 +173,15 @@ export function ReaderWorkspace() {
 
   return (
     <Tooltip.Provider>
-      <main className="reader-shell">
+      <main
+        className="reader-shell"
+        onPointerDown={(event) => {
+          if (!selectedId) return
+          const target = event.target
+          if (target instanceof Element && target.closest('.annotation-detail')) return
+          setSelected(null)
+        }}
+      >
         <header className="reader-topbar">
           <div className="reader-identity">
             <IconButton label="Back to library" onClick={() => void closeDocument()}><ArrowLeft size={17} /></IconButton>
