@@ -14,8 +14,8 @@ import {
 import { DropdownMenu, Tooltip } from 'radix-ui'
 import { useNavigate } from '@tanstack/react-router'
 import { getStorageEstimate } from '#/lib/db.client'
-import { getDocumentSlug } from '#/lib/document-route'
-import { useEditorStore } from '#/lib/editor-store.client'
+import { getDocumentPathSegment } from '#/lib/document-route'
+import { editorStore, useEditorStore } from '#/lib/editor-store.client'
 import { MimirMark, formatFileSize, relativeTime } from './ui'
 
 export function LibraryView() {
@@ -34,7 +34,7 @@ export function LibraryView() {
 
   const openRecord = async (record: (typeof documents)[number]) => {
     await openDocument(record.id)
-    await navigate({ to: '/$pdfName', params: { pdfName: getDocumentSlug(record.name) } })
+    await navigate({ to: '/$pdfName', params: { pdfName: getDocumentPathSegment(record, editorStore.getState().documents) } })
   }
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export function LibraryView() {
     setError(null)
     try {
       const record = await importDocument(file)
-      await navigate({ to: '/$pdfName', params: { pdfName: getDocumentSlug(record.name) } })
+      await navigate({ to: '/$pdfName', params: { pdfName: getDocumentPathSegment(record, editorStore.getState().documents) } })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'The PDF could not be opened.')
     }

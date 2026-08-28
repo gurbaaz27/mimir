@@ -88,6 +88,8 @@ async function persistChange(before: Array<Annotation>, after: Array<Annotation>
   })
 }
 
+let documentOpenRequest = 0
+
 function applyChangeToList(
   current: Array<Annotation>,
   before: Array<Annotation>,
@@ -169,13 +171,16 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   },
 
   openDocument: async (id) => {
+    const request = ++documentOpenRequest
     set({ status: 'loading', error: null })
     const document = await db.documents.get(id)
     if (!document) throw new Error('This local document is no longer available.')
+    if (request !== documentOpenRequest) return
     const lastOpenedAt = new Date().toISOString()
     const activeDocument = { ...document, lastOpenedAt }
     await db.documents.update(id, { lastOpenedAt })
     const annotations = await db.annotations.where('documentId').equals(id).toArray()
+    if (request !== documentOpenRequest) return
     set({
       status: 'ready',
       activeDocument,
@@ -191,6 +196,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   },
 
   closeDocument: async () => {
+    documentOpenRequest += 1
     const { activeDocument, currentPage, zoom, rotation } = get()
     if (activeDocument) {
       await db.documents.update(activeDocument.id, {

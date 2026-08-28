@@ -1,6 +1,6 @@
 import { ClientOnly, createFileRoute, Link } from '@tanstack/react-router'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { getDocumentSlug } from '#/lib/document-route'
+import { getDocumentPathSegment } from '#/lib/document-route'
 import { editorStore, useEditorStore } from '#/lib/editor-store.client'
 
 const ReaderWorkspace = lazy(() =>
@@ -43,7 +43,7 @@ function DocumentPage() {
       }
       if (cancelled) return
 
-      const document = availableDocuments.find((record) => getDocumentSlug(record.name) === pdfName)
+      const document = availableDocuments.find((record) => getDocumentPathSegment(record, availableDocuments) === pdfName)
       if (!document) {
         setNotFound(true)
         setLoading(false)
@@ -67,7 +67,7 @@ function DocumentPage() {
     }
   }, [loadLibrary, openDocument, pdfName])
 
-  const isCurrentDocument = activeDocument && getDocumentSlug(activeDocument.name) === pdfName
+  const isCurrentDocument = activeDocument && getDocumentPathSegment(activeDocument, editorStore.getState().documents) === pdfName
   if (notFound) {
     return (
       <div className="app-boot">
