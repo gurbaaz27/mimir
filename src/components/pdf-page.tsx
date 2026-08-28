@@ -4,6 +4,7 @@ import 'pdfjs-dist/web/pdf_viewer.css'
 import { createAnnotationBase, type Annotation, type MarkupType } from '#/lib/annotations'
 import { useEditorStore } from '#/lib/editor-store.client'
 import { AnnotationOverlay } from './annotation-overlay'
+import { NoteLayer } from './note-layer'
 
 interface PdfPageProps {
   pdf: PDFDocumentProxy
@@ -125,6 +126,13 @@ export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations }: PdfPag
       <canvas ref={canvasRef} aria-label={`Page ${pageNumber}`} />
       <div ref={textRef} className="textLayer" />
       <AnnotationOverlay pageNumber={pageNumber} annotations={annotations} />
+      <NoteLayer
+        pageNumber={pageNumber}
+        annotations={annotations}
+        pageWidth={dimensions.width}
+        pageHeight={dimensions.height}
+        zoom={zoom}
+      />
       {!ready && <div className="page-skeleton" aria-hidden="true"><span /><span /><span /><span /></div>}
       <span className="page-number-badge" aria-hidden="true">{pageNumber}</span>
     </div>

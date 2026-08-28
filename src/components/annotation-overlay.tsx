@@ -102,33 +102,6 @@ function AnnotationGlyph({ annotation, selected }: { annotation: Annotation; sel
           </marker>
         </defs>
       )}
-      {annotation.kind === 'text' && (
-        <foreignObject {...annotation.bounds} className="text-annotation-object">
-          <div style={{ color: annotation.style.color, fontSize: `${annotation.style.fontSize ?? 12}px` }}>
-            {annotation.body || 'Type a note…'}
-          </div>
-        </foreignObject>
-      )}
-      {annotation.kind === 'note' && (
-        <>
-          <foreignObject x={annotation.point.x - 0.016} y={annotation.point.y - 0.016} width="0.04" height="0.04" className="note-annotation-object">
-            <div style={{ background: annotation.style.color }} aria-label={annotation.body || 'Empty note'}>
-              <span />
-            </div>
-          </foreignObject>
-          {annotation.body && (
-            <foreignObject
-              x={Math.min(annotation.point.x + 0.022, 0.72)}
-              y={Math.min(Math.max(0.01, annotation.point.y - 0.016), 0.89)}
-              width="0.26"
-              height="0.11"
-              className="note-preview-object"
-            >
-              <div>{annotation.body}</div>
-            </foreignObject>
-          )}
-        </>
-      )}
       {selected && bounds && (
         <rect
           className="annotation-selection"
@@ -156,7 +129,11 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
   const [draftEnd, setDraftEnd] = useState<Point | null>(null)
   const isDirectTool = ['ink', 'rectangle', 'ellipse', 'line', 'arrow', 'text', 'note'].includes(tool)
   const pageAnnotations = useMemo(
-    () => annotations.filter((annotation) => annotation.pageNumber === pageNumber),
+    () =>
+      annotations.filter(
+        (annotation) =>
+          annotation.pageNumber === pageNumber && annotation.kind !== 'note' && annotation.kind !== 'text',
+      ),
     [annotations, pageNumber],
   )
 

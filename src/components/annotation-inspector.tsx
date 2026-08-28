@@ -41,7 +41,6 @@ function AnnotationDetail({ annotation }: { annotation: Annotation }) {
         <label className="annotation-body-field">
           <span>{annotation.kind === 'note' ? 'Comment' : 'Text'}</span>
           <textarea
-            autoFocus={!annotation.body}
             value={body}
             placeholder={annotation.kind === 'note' ? 'Add your thought…' : 'Type on the page…'}
             onChange={(event) => setBody(event.target.value)}
