@@ -91,6 +91,10 @@ export function ReaderWorkspace() {
   }, [])
 
   useEffect(() => {
+    if (temporaryPanTool.current && tool !== 'pan') temporaryPanTool.current = null
+  }, [tool])
+
+  useEffect(() => {
     const shortcuts: Record<string, () => void> = {
       v: () => setTool('select'),
       h: () => setTool('highlight'),
@@ -101,6 +105,12 @@ export function ReaderWorkspace() {
       r: () => setTool('rectangle'),
       e: () => setTool('ellipse'),
       a: () => setTool('arrow'),
+    }
+    const restoreTemporaryPan = () => {
+      const previousTool = temporaryPanTool.current
+      if (!previousTool) return
+      temporaryPanTool.current = null
+      setTool(previousTool)
     }
     const keydown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
@@ -132,16 +142,15 @@ export function ReaderWorkspace() {
     const keyup = (event: KeyboardEvent) => {
       if (event.code !== 'Space') return
       event.preventDefault()
-      if (temporaryPanTool.current) {
-        setTool(temporaryPanTool.current)
-        temporaryPanTool.current = null
-      }
+      restoreTemporaryPan()
     }
     window.addEventListener('keydown', keydown)
     window.addEventListener('keyup', keyup)
+    window.addEventListener('blur', restoreTemporaryPan)
     return () => {
       window.removeEventListener('keydown', keydown)
       window.removeEventListener('keyup', keyup)
+      window.removeEventListener('blur', restoreTemporaryPan)
     }
   }, [deleteAnnotations, redo, selectedId, setSearchOpen, setTool, tool, undo])
 
