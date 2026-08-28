@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowLeft,
   Bot,
@@ -28,6 +29,7 @@ import { SearchPanel } from './search-panel'
 import { IconButton, MimirMark } from './ui'
 
 export function ReaderWorkspace() {
+  const navigate = useNavigate()
   const activeDocument = useEditorStore((state) => state.activeDocument)
   const annotations = useEditorStore((state) => state.annotations)
   const currentPage = useEditorStore((state) => state.currentPage)
@@ -62,6 +64,11 @@ export function ReaderWorkspace() {
   const [exportProgress, setExportProgress] = useState<number | null>(null)
   const temporaryPanTool = useRef<EditorTool | null>(null)
   const webMcpStatus = useWebMcp(activeDocument?.id ?? null)
+
+  const goToLibrary = async () => {
+    await closeDocument()
+    await navigate({ to: '/' })
+  }
 
   const restoreTemporaryPan = () => {
     const previousTool = temporaryPanTool.current
@@ -227,7 +234,7 @@ export function ReaderWorkspace() {
       >
         <header className="reader-topbar">
           <div className="reader-identity">
-            <IconButton label="Back to library" onClick={() => void closeDocument()}><ArrowLeft size={17} /></IconButton>
+            <IconButton label="Back to library" onClick={() => void goToLibrary()}><ArrowLeft size={17} /></IconButton>
             <MimirMark compact />
             <div className="document-title">
               <strong>{activeDocument.title || activeDocument.name.replace(/\.pdf$/i, '')}</strong>

@@ -12,11 +12,14 @@ import {
   UploadCloud,
 } from 'lucide-react'
 import { DropdownMenu, Tooltip } from 'radix-ui'
+import { useNavigate } from '@tanstack/react-router'
 import { getStorageEstimate } from '#/lib/db.client'
+import { getDocumentSlug } from '#/lib/document-route'
 import { useEditorStore } from '#/lib/editor-store.client'
 import { MimirMark, formatFileSize, relativeTime } from './ui'
 
 export function LibraryView() {
+  const navigate = useNavigate()
   const documents = useEditorStore((state) => state.documents)
   const loadLibrary = useEditorStore((state) => state.loadLibrary)
   const importDocument = useEditorStore((state) => state.importDocument)
@@ -29,6 +32,11 @@ export function LibraryView() {
   const [error, setError] = useState<string | null>(null)
   const [storage, setStorage] = useState<{ usage?: number; quota?: number } | null>(null)
 
+  const openRecord = async (record: (typeof documents)[number]) => {
+    await openDocument(record.id)
+    await navigate({ to: '/$pdfName', params: { pdfName: getDocumentSlug(record.name) } })
+  }
+
   useEffect(() => {
     void loadLibrary()
     void getStorageEstimate().then(setStorage)
@@ -38,7 +46,8 @@ export function LibraryView() {
     if (!file) return
     setError(null)
     try {
-      await importDocument(file)
+      const record = await importDocument(file)
+      await navigate({ to: '/$pdfName', params: { pdfName: getDocumentSlug(record.name) } })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'The PDF could not be opened.')
     }
@@ -119,7 +128,7 @@ export function LibraryView() {
                 const progress = Math.max(3, Math.round((record.lastPage / record.pageCount) * 100))
                 return (
                   <article className="document-row" key={record.id}>
-                    <button className="document-open" type="button" onClick={() => void openDocument(record.id)}>
+                    <button className="document-open" type="button" onClick={() => void openRecord(record)}>
                       <span className="pdf-thumb" aria-hidden="true">
                         <span>PDF</span>
                         <i style={{ height: `${progress}%` }} />
@@ -146,7 +155,7 @@ export function LibraryView() {
                       </DropdownMenu.Trigger>
                       <DropdownMenu.Portal>
                         <DropdownMenu.Content className="menu-content" align="end" sideOffset={7}>
-                          <DropdownMenu.Item className="menu-item" onSelect={() => void openDocument(record.id)}>
+                          <DropdownMenu.Item className="menu-item" onSelect={() => void openRecord(record)}>
                             <FolderOpen size={15} /> Open document
                           </DropdownMenu.Item>
                           <DropdownMenu.Separator className="menu-separator" />
