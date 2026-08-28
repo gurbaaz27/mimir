@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Bot,
@@ -17,7 +17,7 @@ import {
 import { Dialog, DropdownMenu, Tooltip } from 'radix-ui'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { Annotation } from '#/lib/annotations'
-import { useEditorStore } from '#/lib/editor-store.client'
+import { useEditorStore, type EditorTool } from '#/lib/editor-store.client'
 import { loadPdf } from '#/lib/pdf.client'
 import { useWebMcp } from '#/lib/webmcp.client'
 import { AnnotationInspector } from './annotation-inspector'
@@ -40,6 +40,7 @@ export function ReaderWorkspace() {
   const history = useEditorStore((state) => state.history)
   const future = useEditorStore((state) => state.future)
   const selectedId = useEditorStore((state) => state.selectedAnnotationId)
+  const tool = useEditorStore((state) => state.tool)
   const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
   const closeDocument = useEditorStore((state) => state.closeDocument)
   const setCurrentPage = useEditorStore((state) => state.setCurrentPage)
@@ -60,6 +61,7 @@ export function ReaderWorkspace() {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'pdf' | 'json'>('pdf')
   const [exportProgress, setExportProgress] = useState<number | null>(null)
+  const temporaryPanTool = useRef<EditorTool | null>(null)
   const webMcpStatus = useWebMcp(activeDocument?.id ?? null)
 
   useEffect(() => {
@@ -103,6 +105,14 @@ export function ReaderWorkspace() {
     const keydown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target?.matches('input, textarea, [contenteditable="true"]')) return
+      if (event.code === 'Space' && !event.repeat) {
+        event.preventDefault()
+        if (tool !== 'pan') {
+          temporaryPanTool.current = tool
+          setTool('pan')
+        }
+        return
+      }
       const key = event.key.toLowerCase()
       if ((event.metaKey || event.ctrlKey) && key === 'z') {
         event.preventDefault()
@@ -119,9 +129,21 @@ export function ReaderWorkspace() {
         shortcuts[key]?.()
       }
     }
+    const keyup = (event: KeyboardEvent) => {
+      if (event.code !== 'Space') return
+      event.preventDefault()
+      if (temporaryPanTool.current) {
+        setTool(temporaryPanTool.current)
+        temporaryPanTool.current = null
+      }
+    }
     window.addEventListener('keydown', keydown)
-    return () => window.removeEventListener('keydown', keydown)
-  }, [deleteAnnotations, redo, selectedId, setSearchOpen, setTool, undo])
+    window.addEventListener('keyup', keyup)
+    return () => {
+      window.removeEventListener('keydown', keydown)
+      window.removeEventListener('keyup', keyup)
+    }
+  }, [deleteAnnotations, redo, selectedId, setSearchOpen, setTool, tool, undo])
 
   useEffect(() => {
     return () => {
