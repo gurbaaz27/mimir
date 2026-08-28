@@ -3,6 +3,7 @@ import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { db, type DocumentRecord } from './db.client'
+import { getDocumentSlug } from './document-route'
 import {
   annotationSchema,
   type Annotation,
@@ -79,6 +80,29 @@ interface EditorState {
   indexDocument: (loadedPdf?: PDFDocumentProxy) => Promise<void>
 }
 
+async function loadDocumentsWithStableRoutes() {
+  const documents = await db.documents.orderBy('lastOpenedAt').reverse().toArray()
+  const usedRoutes = new Set<string>()
+  const normalizedDocuments: Array<DocumentRecord> = []
+  const updates: Array<Promise<unknown>> = []
+
+  for (const document of documents) {
+    const baseSlug = getDocumentSlug(document.name)
+    let routeSlug = document.routeSlug || baseSlug
+    let suffix = 0
+    while (usedRoutes.has(routeSlug)) {
+      suffix += 1
+      routeSlug = `${baseSlug}--${document.id}${suffix > 1 ? `-${suffix}` : ''}`
+    }
+    usedRoutes.add(routeSlug)
+    normalizedDocuments.push({ ...document, routeSlug })
+    if (document.routeSlug !== routeSlug) updates.push(db.documents.update(document.id, { routeSlug }))
+  }
+
+  await Promise.all(updates)
+  return normalizedDocuments
+}
+
 async function persistChange(before: Array<Annotation>, after: Array<Annotation>) {
   const afterIds = new Set(after.map((annotation) => annotation.id))
   const removed = before.filter((annotation) => !afterIds.has(annotation.id))
@@ -121,7 +145,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   future: [],
 
   loadLibrary: async () => {
-    const documents = await db.documents.orderBy('lastOpenedAt').reverse().toArray()
+    const documents = await loadDocumentsWithStableRoutes()
     set({ documents })
   },
 
@@ -136,7 +160,8 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       const existing = await db.documents.where('fingerprint').equals(fingerprint).first()
       if (existing) {
         await get().openDocument(existing.id)
-        return existing
+        await get().loadLibrary()
+        return get().documents.find((document) => document.id === existing.id) ?? existing
       }
 
       const pdf = await loadPdf(file)
@@ -162,7 +187,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       await db.documents.add(record)
       await get().loadLibrary()
       await get().openDocument(record.id)
-      return record
+      return get().documents.find((document) => document.id === record.id) ?? record
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The PDF could not be opened.'
       set({ status: 'error', error: message })
@@ -176,11 +201,11 @@ export const editorStore = createStore<EditorState>((set, get) => ({
     const document = await db.documents.get(id)
     if (!document) throw new Error('This local document is no longer available.')
     if (request !== documentOpenRequest) return
-    const lastOpenedAt = new Date().toISOString()
-    const activeDocument = { ...document, lastOpenedAt }
-    await db.documents.update(id, { lastOpenedAt })
     const annotations = await db.annotations.where('documentId').equals(id).toArray()
     if (request !== documentOpenRequest) return
+
+    const lastOpenedAt = new Date().toISOString()
+    const activeDocument = { ...document, lastOpenedAt }
     set({
       status: 'ready',
       activeDocument,
@@ -192,6 +217,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       history: [],
       future: [],
     })
+    await db.documents.update(id, { lastOpenedAt })
     void get().loadLibrary()
   },
 

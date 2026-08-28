@@ -10,12 +10,13 @@ describe('document routes', () => {
     expect(getDocumentPath(firstDocument)).toBe('/report-2024')
   })
 
-  it('adds a stable id when filename slugs collide', () => {
-    const documents = [firstDocument, secondDocument]
+  it('uses persisted route segments for colliding filenames', () => {
+    const firstRoutedDocument = { ...firstDocument, routeSlug: 'report-2024--first' }
+    const secondRoutedDocument = { ...secondDocument, routeSlug: 'report-2024--second' }
 
-    expect(getDocumentPathSegment(firstDocument, documents)).toBe('report-2024--first')
-    expect(getDocumentPathSegment(secondDocument, documents)).toBe('report-2024--second')
-    expect(getDocumentPath(firstDocument, documents)).toBe('/report-2024--first')
+    expect(getDocumentPathSegment(firstRoutedDocument)).toBe('report-2024--first')
+    expect(getDocumentPathSegment(secondRoutedDocument)).toBe('report-2024--second')
+    expect(getDocumentPath(firstRoutedDocument)).toBe('/report-2024--first')
   })
 
   it('keeps non-Latin names routable', () => {

@@ -43,7 +43,7 @@ function DocumentPage() {
       }
       if (cancelled) return
 
-      const document = availableDocuments.find((record) => getDocumentPathSegment(record, availableDocuments) === pdfName)
+      const document = availableDocuments.find((record) => getDocumentPathSegment(record) === pdfName)
       if (!document) {
         setNotFound(true)
         setLoading(false)
@@ -67,7 +67,7 @@ function DocumentPage() {
     }
   }, [loadLibrary, openDocument, pdfName])
 
-  const isCurrentDocument = activeDocument && getDocumentPathSegment(activeDocument, editorStore.getState().documents) === pdfName
+  const isCurrentDocument = activeDocument && getDocumentPathSegment(activeDocument) === pdfName
   if (notFound) {
     return (
       <div className="app-boot">

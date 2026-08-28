@@ -1,6 +1,6 @@
 import type { DocumentRecord } from './db.client'
 
-type RoutableDocument = Pick<DocumentRecord, 'id' | 'name'>
+export type RoutableDocument = Pick<DocumentRecord, 'id' | 'name' | 'routeSlug'>
 
 /**
  * Create the readable base path segment used for a local document.
@@ -20,16 +20,13 @@ export function getDocumentSlug(name: string) {
 }
 
 /**
- * Keep the common case clean while making colliding filename slugs unique.
- * The document id is stable in IndexedDB, so the resulting route survives a
- * refresh and can still be resolved when multiple files share a name.
+ * Read the persisted segment, falling back to the base slug for documents
+ * created before route segments were stored.
  */
-export function getDocumentPathSegment(document: RoutableDocument, documents: readonly RoutableDocument[]) {
-  const slug = getDocumentSlug(document.name)
-  const collisions = documents.filter((candidate) => getDocumentSlug(candidate.name) === slug)
-  return collisions.length > 1 ? `${slug}--${document.id}` : slug
+export function getDocumentPathSegment(document: RoutableDocument) {
+  return document.routeSlug || getDocumentSlug(document.name)
 }
 
-export function getDocumentPath(document: RoutableDocument, documents: readonly RoutableDocument[] = [document]) {
-  return `/${getDocumentPathSegment(document, documents)}`
+export function getDocumentPath(document: RoutableDocument) {
+  return `/${getDocumentPathSegment(document)}`
 }
