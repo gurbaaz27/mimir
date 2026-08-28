@@ -48,6 +48,7 @@ interface EditorState {
   loadLibrary: () => Promise<void>
   importDocument: (file: File) => Promise<DocumentRecord>
   openDocument: (id: string) => Promise<void>
+  cancelDocumentOpen: () => void
   closeDocument: () => Promise<void>
   deleteDocument: (id: string) => Promise<void>
   setTool: (tool: EditorTool) => void
@@ -82,6 +83,7 @@ interface EditorState {
 
 async function loadDocumentsWithStableRoutes() {
   const documents = await db.documents.orderBy('lastOpenedAt').reverse().toArray()
+  const persistedRoutes = new Set(documents.flatMap((document) => document.routeSlug ? [document.routeSlug] : []))
   const usedRoutes = new Set<string>()
   const normalizedDocuments: Array<DocumentRecord> = []
   const updates: Array<Promise<unknown>> = []
@@ -90,7 +92,7 @@ async function loadDocumentsWithStableRoutes() {
     const baseSlug = getDocumentSlug(document.name)
     let routeSlug = document.routeSlug || baseSlug
     let suffix = 0
-    while (usedRoutes.has(routeSlug)) {
+    while (!document.routeSlug && (persistedRoutes.has(routeSlug) || usedRoutes.has(routeSlug))) {
       suffix += 1
       routeSlug = `${baseSlug}--${document.id}${suffix > 1 ? `-${suffix}` : ''}`
     }
@@ -219,6 +221,10 @@ export const editorStore = createStore<EditorState>((set, get) => ({
     })
     await db.documents.update(id, { lastOpenedAt })
     void get().loadLibrary()
+  },
+
+  cancelDocumentOpen: () => {
+    documentOpenRequest += 1
   },
 
   closeDocument: async () => {

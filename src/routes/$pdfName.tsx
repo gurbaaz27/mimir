@@ -25,11 +25,13 @@ function DocumentPage() {
   const activeDocument = useEditorStore((state) => state.activeDocument)
   const loadLibrary = useEditorStore((state) => state.loadLibrary)
   const openDocument = useEditorStore((state) => state.openDocument)
+  const cancelDocumentOpen = useEditorStore((state) => state.cancelDocumentOpen)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    cancelDocumentOpen()
     let cancelled = false
     setLoading(true)
     setNotFound(false)
@@ -64,8 +66,9 @@ function DocumentPage() {
 
     return () => {
       cancelled = true
+      cancelDocumentOpen()
     }
-  }, [loadLibrary, openDocument, pdfName])
+  }, [cancelDocumentOpen, loadLibrary, openDocument, pdfName])
 
   const isCurrentDocument = activeDocument && getDocumentPathSegment(activeDocument) === pdfName
   if (notFound) {
