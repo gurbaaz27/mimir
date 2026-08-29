@@ -155,7 +155,7 @@ export function LibraryView() {
                 <h1 id="library-title">
                   <Tagline />
                 </h1>
-                <p>Everything below lives in this browser, ready the moment you open it.</p>
+                <p>Highlight, draw, and pin sticky notes as you read. Your agent marks up the same page you do.</p>
               </div>
               <button className="primary-button" type="button" onClick={() => inputRef.current?.click()}>
                 <PlusIcon size={16} />
