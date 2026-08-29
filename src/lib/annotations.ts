@@ -59,10 +59,10 @@ export const shapeAnnotationSchema = base.extend({
 })
 
 /**
- * How much text each kind of body can hold. A text box is drawn into a fixed
- * area on the page, so it is bounded well below a note, which is read in a
- * panel. Anything validating a body has to read the limit from here rather
- * than restate it, or the two drift apart.
+ * How much text each kind of body can hold. A text box is drawn directly onto
+ * the page and grows with its content, but is still bounded well below a note,
+ * which is read in a panel. Anything validating a body has to read the limit
+ * from here rather than restate it, or the two drift apart.
  */
 export const annotationBodyLimits = { text: 10_000, note: 25_000 } as const
 

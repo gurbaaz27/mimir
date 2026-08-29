@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
 import type { Annotation, NormalizedRect, Point } from '#/lib/annotations'
 import { useEditorStore } from '#/lib/editor-store.client'
@@ -18,6 +18,9 @@ interface NoteLayerProps {
 const NOTE_WIDTH = 178
 const NOTE_HEIGHT = 118
 const PIN_SIZE = 22
+const TEXT_BOX_LINE_HEIGHT = 1.28
+const TEXT_BOX_VERTICAL_PADDING = 4
+const TEXT_BOX_VERTICAL_BORDER = 2
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max))
@@ -197,6 +200,7 @@ function TextBox({
   const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
   const update = useEditorStore((state) => state.updateAnnotation)
   const [body, setBody] = useState(annotation.body)
+  const [contentHeight, setContentHeight] = useState<number | null>(null)
   const [dragBounds, setDragBounds] = useState<NormalizedRect | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
@@ -207,14 +211,34 @@ function TextBox({
     if (selected && !annotation.body) inputRef.current?.focus()
   }, [selected, annotation.body])
 
-  const bounds = dragBounds ?? annotation.bounds
+  const bounds = dragBounds ?? {
+    ...annotation.bounds,
+    height: contentHeight ?? annotation.bounds.height,
+  }
+
+  useLayoutEffect(() => {
+    const input = inputRef.current
+    if (!input || !pageHeight) return
+
+    // Let the textarea report its natural height instead of the current box
+    // height. This includes wrapped lines as well as explicit newlines.
+    const previousHeight = input.style.height
+    input.style.height = '0px'
+    const requiredHeight = input.scrollHeight + TEXT_BOX_VERTICAL_BORDER
+    input.style.height = previousHeight
+
+    const fontSize = (annotation.style.fontSize ?? 12) * zoom
+    const minimumHeight = (fontSize * TEXT_BOX_LINE_HEIGHT + TEXT_BOX_VERTICAL_PADDING + TEXT_BOX_VERTICAL_BORDER) / pageHeight
+    const nextHeight = Math.min(1, Math.max(minimumHeight, requiredHeight / pageHeight))
+    setContentHeight((current) => current === nextHeight ? current : nextHeight)
+  }, [annotation.bounds.height, annotation.bounds.width, annotation.style.fontSize, body, pageHeight, pageWidth, zoom])
 
   const handleDragStart = (event: PointerEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     setSelected(annotation.id)
     event.currentTarget.setPointerCapture(event.pointerId)
     dragRef.current = { x: event.clientX, y: event.clientY, moved: false }
-    dragBoundsRef.current = annotation.bounds
+    dragBoundsRef.current = bounds
   }
 
   const handleDragMove = (event: PointerEvent<HTMLButtonElement>) => {
@@ -225,7 +249,7 @@ function TextBox({
     if (!drag.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
     drag.moved = true
     const nextBounds = {
-      ...annotation.bounds,
+      ...(dragBoundsRef.current ?? bounds),
       x: clamp(annotation.bounds.x + dx / pageWidth, 0, 1 - annotation.bounds.width),
       y: clamp(annotation.bounds.y + dy / pageHeight, 0, 1 - annotation.bounds.height),
     }
@@ -246,6 +270,14 @@ function TextBox({
     } else {
       setDragBounds(null)
     }
+  }
+
+  const commit = () => {
+    const nextBounds = contentHeight !== null && Math.abs(contentHeight - annotation.bounds.height) > 0.0001
+      ? { ...annotation.bounds, height: contentHeight }
+      : undefined
+    if (body === annotation.body && !nextBounds) return
+    void update(annotation.id, { body, ...(nextBounds ? { bounds: nextBounds } : {}) } as Partial<Annotation>)
   }
 
   return (
@@ -275,9 +307,7 @@ function TextBox({
         }}
         onFocus={() => setSelected(annotation.id)}
         onChange={(event) => setBody(event.target.value)}
-        onBlur={() => {
-          if (body !== annotation.body) void update(annotation.id, { body } as Partial<Annotation>)
-        }}
+        onBlur={commit}
       />
       <button
         type="button"

@@ -154,7 +154,7 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
         [{
           ...base,
           kind: 'text',
-          bounds: { x: point.x, y: point.y, width: Math.min(0.3, 0.98 - point.x), height: 0.08 },
+          bounds: { x: point.x, y: point.y, width: Math.min(0.3, 0.98 - point.x), height: 0.027 },
           body: '',
           alignment: 'left',
         }],
