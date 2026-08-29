@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { db } from '#/lib/db.client'
@@ -41,6 +41,15 @@ describe('local document library', () => {
     await db.documents.add(record)
     const user = userEvent.setup()
     render(<LibraryView />)
+
+    expect(await screen.findByRole('button', { name: /drop another pdf here/i })).toBeTruthy()
+    expect(document.querySelectorAll('.pitch-line')[1]?.textContent).toMatch(/ask your agent to do that for you/i)
+    expect(screen.getByText(/never leave this browser/i)).toBeTruthy()
+
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+    await user.click(screen.getByRole('button', { name: 'My Library' }))
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
 
     await user.click(await screen.findByRole('button', { name: /more options for research-notes\.pdf/i }))
     await user.click(screen.getByRole('menuitem', { name: /remove/i }))

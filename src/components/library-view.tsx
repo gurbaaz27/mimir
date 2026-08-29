@@ -8,12 +8,11 @@ import {
   FolderOpenIcon,
   LockIcon,
   MoreIcon,
-  PlusIcon,
   TrashIcon,
-  UploadIcon,
   ZapIcon,
   type AnimatedIconHandle,
 } from '#/components/icons'
+import { GalleryVerticalEndIcon } from '#/components/ui/gallery-vertical-end'
 import { Openai } from '#/components/ui/svgs/openai'
 import { getStorageEstimate } from '#/lib/db.client'
 import { getDocumentPathSegment } from '#/lib/document-route'
@@ -22,8 +21,8 @@ import { AgentStatus } from './agent-status'
 import { MimirMark, documentLabel, formatFileSize, relativeTime } from './ui'
 
 const claims = [
-  { icon: LockIcon, text: 'your pdfs never leave this browser' },
-  { icon: ZapIcon, text: 'opens instantly, works offline' },
+  { icon: LockIcon, text: 'Your pdfs never leave the browser' },
+  { icon: ZapIcon, text: 'Opens instantly, works offline' },
   { icon: BotIcon, text: 'Agent Ready over WebMCP' },
 ]
 
@@ -87,6 +86,14 @@ export function LibraryView() {
   }
 
   const storagePercent = storage?.quota && storage.usage ? Math.round((storage.usage / storage.quota) * 100) : null
+  const scrollToLibrary = () => {
+    const library = document.getElementById('library-section')
+    if (!library) return
+    library.scrollIntoView?.({
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth',
+      block: 'start',
+    })
+  }
   const dropHandlers = {
     onPointerEnter: () => zoneIconRef.current?.startAnimation(),
     onPointerLeave: () => zoneIconRef.current?.stopAnimation(),
@@ -114,7 +121,15 @@ export function LibraryView() {
       <main className="library-shell">
         <header className="library-header">
           <MimirMark />
-          <AgentStatus documentId={null} variant="library" />
+          <div className="library-header-actions">
+            <AgentStatus documentId={null} variant="library" />
+            {documents.length > 0 && (
+              <button className="primary-button library-nav-button" type="button" onClick={scrollToLibrary}>
+                <GalleryVerticalEndIcon className="library-nav-icon" size={16} />
+                My Library
+              </button>
+            )}
+          </div>
         </header>
 
         <input
@@ -128,73 +143,61 @@ export function LibraryView() {
           }}
         />
 
-        {documents.length === 0 ? (
-          <>
-            <section className="hero">
-              <img className="hero-mark" src="/mimir-logo.png" alt="" width={88} height={88} />
-              <h1>
-                <Tagline />
-              </h1>
-              <p>
-                A pdf workspace that runs entirely on your machine. Read closely, mark it up, and let
-                your agent work the same page you are on.
-              </p>
-            </section>
+        <section className="hero">
+          <img className="hero-mark" src="/mimir-logo.png" alt="" width={88} height={88} />
+          <h1>
+            <Tagline />
+          </h1>
+          <p className="hero-pitch">
+            <span className="pitch-line">
+              <mark className="mark-highlight">Highlight</mark>,{' '}
+              <span className="mark-draw">draw</span>, and pin{' '}
+              <span className="mark-note">sticky notes</span> as you read.
+            </span>
+            <span className="pitch-line">
+              Or ask your{' '}
+              <span className="mark-agent">
+                <Openai className="mark-agent-glyph" fill="currentColor" />
+                agent
+              </span>{' '}
+              to do that for you.
+            </span>
+          </p>
+        </section>
 
-            <button
-              type="button"
-              className={`drop-zone drop-zone-empty ${dragging ? 'is-dragging' : ''}`}
-              onClick={() => inputRef.current?.click()}
-              {...dropHandlers}
-            >
-              <span className="upload-orbit" aria-hidden="true">
-                <FileTextIcon ref={zoneIconRef} size={26} />
-              </span>
-              <strong>{status === 'loading' ? 'opening your pdf…' : 'drop a pdf to begin'}</strong>
-              <span>or choose one from your computer</span>
-              <span className="drop-hint" aria-hidden="true">Nothing uploads. The file stays on this device.</span>
-            </button>
+        <button
+          type="button"
+          className={`drop-zone drop-zone-featured ${dragging ? 'is-dragging' : ''}`}
+          onClick={() => inputRef.current?.click()}
+          {...dropHandlers}
+        >
+          <span className="upload-orbit" aria-hidden="true">
+            <FileTextIcon ref={zoneIconRef} size={26} />
+          </span>
+          <strong>
+            {status === 'loading'
+              ? 'opening your pdf…'
+              : documents.length === 0
+                ? 'drop a pdf to begin'
+                : 'drop another pdf here'}
+          </strong>
+          <span>or choose one from your computer</span>
+          <span className="drop-hint" aria-hidden="true">Nothing uploads. The file stays on this device.</span>
+        </button>
 
-            <div className="hero-claims">
-              {claims.map(({ icon: Icon, text }) => (
-                <span className="claim" key={text}>
-                  <Icon size={14} />
-                  {text}
-                </span>
-              ))}
-            </div>
-          </>
-        ) : (
-          <section className="document-library" aria-labelledby="library-title">
-            <div className="library-intro">
-              <div>
-                <h1 id="library-title">
-                  <Tagline />
-                </h1>
-                <p className="library-pitch">
-                  <span className="pitch-line">
-                    <mark className="mark-highlight">Highlight</mark>,{' '}
-                    <span className="mark-draw">draw</span>, and pin{' '}
-                    <span className="mark-note">sticky notes</span> as you read.
-                  </span>
-                  <span className="pitch-line">
-                    Your{' '}
-                    <span className="mark-agent">
-                      <Openai className="mark-agent-glyph" fill="currentColor" />
-                      agent
-                    </span>{' '}
-                    marks up the same page you do.
-                  </span>
-                </p>
-              </div>
-              <button className="primary-button" type="button" onClick={() => inputRef.current?.click()}>
-                <PlusIcon size={16} />
-                Add PDF
-              </button>
-            </div>
+        <div className="hero-claims">
+          {claims.map(({ icon: Icon, text }) => (
+            <span className="claim" key={text}>
+              <Icon size={14} />
+              {text}
+            </span>
+          ))}
+        </div>
 
+        {documents.length > 0 && (
+          <section id="library-section" className="document-library" aria-labelledby="library-title">
             <div className="section-heading">
-              <h2>Your library</h2>
+              <h2 id="library-title">Your library</h2>
               <i aria-hidden="true" />
               <span>
                 {documents.length} {documents.length === 1 ? 'document' : 'documents'} stored locally
@@ -251,29 +254,6 @@ export function LibraryView() {
                 )
               })}
             </div>
-            <button
-              type="button"
-              className={`drop-zone drop-zone-compact ${dragging ? 'is-dragging' : ''}`}
-              onClick={() => inputRef.current?.click()}
-              {...dropHandlers}
-            >
-              <span className="drop-tile" aria-hidden="true">
-                <UploadIcon ref={zoneIconRef} size={18} />
-              </span>
-              <span className="drop-copy">
-                <strong>{dragging ? 'Release to add it' : 'Drop another PDF here'}</strong>
-                <span>or click to browse your computer</span>
-              </span>
-            </button>
-
-            <ul className="library-claims">
-              {claims.map(({ icon: Icon, text }) => (
-                <li key={text}>
-                  <Icon size={13} />
-                  {text}
-                </li>
-              ))}
-            </ul>
           </section>
         )}
 
