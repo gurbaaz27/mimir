@@ -356,3 +356,117 @@ describe('anchoring marks to what the page actually says', () => {
     expect(editorStore.getState().currentPage).toBe(2)
   })
 })
+
+describe('batches that name the same mark twice', () => {
+  beforeEach(async () => {
+    await db.annotations.clear()
+    editorStore.setState({
+      activeDocument: record(),
+      annotations: [],
+      outline: null,
+      history: [],
+      future: [],
+      selectedAnnotationId: null,
+      currentPage: 1,
+      toast: null,
+    })
+  })
+
+  it('layers repeated patches onto one record instead of duplicating it', async () => {
+    const comment = note('webmcp')
+    await editorStore.getState().createAnnotations([comment], 'Add note')
+    editorStore.setState({ history: [], future: [] })
+
+    const result = (await run('update_annotations', {
+      updates: [
+        { id: comment.id, body: 'First pass.' },
+        { id: comment.id, resolved: true },
+        { id: comment.id, style: { color: '#e76f51' } },
+      ],
+    })) as { updated: Array<{ id: string; changed: Array<string> }> }
+
+    expect(result.updated).toEqual([{ id: comment.id, changed: ['body', 'resolved', 'style'] }])
+
+    const annotations = editorStore.getState().annotations
+    expect(annotations).toHaveLength(1)
+    const stored = annotations[0]
+    expect(stored?.kind).toBe('note')
+    if (stored?.kind === 'note') {
+      expect(stored.body).toBe('First pass.')
+      expect(stored.resolved).toBe(true)
+      expect(stored.style.color).toBe('#e76f51')
+    }
+
+    // What was persisted and what is in memory have to agree, or undo restores
+    // one of them and not the other.
+    expect(await db.annotations.where('documentId').equals(documentId).count()).toBe(1)
+    expect(editorStore.getState().history).toHaveLength(1)
+
+    await run('undo_last_change')
+    expect(editorStore.getState().annotations).toEqual([comment])
+    expect(await db.annotations.get(comment.id)).toMatchObject({
+      body: 'Check the methodology.',
+      resolved: false,
+    })
+  })
+
+  it('reports a repeated delete id once', async () => {
+    const mine = note('webmcp')
+    await editorStore.getState().createAnnotations([mine], 'Add note')
+
+    const result = await run('delete_annotations', { ids: [mine.id, mine.id] })
+    expect(result.deleted).toEqual([mine.id])
+    expect(editorStore.getState().annotations).toEqual([])
+  })
+})
+
+describe('shape geometry the renderer can actually draw', () => {
+  beforeEach(async () => {
+    await db.annotations.clear()
+    document.body.innerHTML = ''
+    stubLayout()
+    editorStore.setState({
+      activeDocument: record(),
+      annotations: [],
+      outline: null,
+      history: [],
+      future: [],
+      selectedAnnotationId: null,
+      currentPage: 1,
+      toast: null,
+    })
+  })
+
+  it('rejects a line carrying bounds and a rectangle carrying endpoints', async () => {
+    await expect(
+      run('create_annotations', {
+        annotations: [{ kind: 'shape', pageNumber: 1, shape: 'line', bounds: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 } }],
+      }),
+    ).rejects.toThrow(/start/)
+
+    await expect(
+      run('create_annotations', {
+        annotations: [
+          { kind: 'shape', pageNumber: 1, shape: 'rectangle', start: { x: 0.1, y: 0.1 }, end: { x: 0.3, y: 0.3 } },
+        ],
+      }),
+    ).rejects.toThrow(/bounds/)
+
+    expect(editorStore.getState().annotations).toEqual([])
+  })
+
+  it('stores each subtype with only the geometry it draws from', async () => {
+    await run('create_annotations', {
+      annotations: [
+        { kind: 'shape', pageNumber: 1, shape: 'ellipse', bounds: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 } },
+        { kind: 'shape', pageNumber: 1, shape: 'arrow', start: { x: 0.1, y: 0.1 }, end: { x: 0.3, y: 0.3 } },
+      ],
+    })
+
+    const [ellipse, arrow] = editorStore.getState().annotations
+    expect(ellipse?.kind === 'shape' && ellipse.bounds).toBeTruthy()
+    expect(ellipse?.kind === 'shape' && ellipse.start).toBeUndefined()
+    expect(arrow?.kind === 'shape' && arrow.start).toBeTruthy()
+    expect(arrow?.kind === 'shape' && arrow.bounds).toBeUndefined()
+  })
+})

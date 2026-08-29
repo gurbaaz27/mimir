@@ -11,6 +11,25 @@ import {
   updateAnnotationsInput,
 } from './webmcp-contract'
 
+type SchemaBranch = {
+  properties: { kind: { const: string }; shape?: { enum: Array<string> } }
+  required: Array<string>
+}
+
+/** The item branches an agent picks between, with the nested shape union flattened. */
+function branches(): Array<SchemaBranch> {
+  const schema = toJsonSchema(createAnnotationsInput) as {
+    properties: { annotations: { items: { oneOf: Array<SchemaBranch | { oneOf: Array<SchemaBranch> }> } } }
+  }
+  return schema.properties.annotations.items.oneOf.flatMap((branch) =>
+    'oneOf' in branch ? branch.oneOf : [branch],
+  )
+}
+
+function branchKinds() {
+  return branches().map((branch) => branch.properties.kind.const)
+}
+
 const style = { color: '#159b98', opacity: 0.85, strokeWidth: 2 }
 
 function markup(author: Annotation['createdBy'] = 'webmcp'): Annotation {
@@ -35,19 +54,33 @@ function note(author: Annotation['createdBy'] = 'human'): Annotation {
 
 describe('the published tool contract', () => {
   it('exposes every branch of the annotation union an agent has to construct', () => {
-    const schema = toJsonSchema(createAnnotationsInput) as {
-      properties: { annotations: { items: { oneOf: Array<{ properties: { kind: { const: string } } }> } } }
-    }
-    const kinds = schema.properties.annotations.items.oneOf.map((branch) => branch.properties.kind.const)
-    expect(kinds).toEqual(['markup', 'note', 'text', 'shape', 'ink'])
+    expect(branchKinds()).toEqual(['markup', 'note', 'text', 'shape', 'shape', 'ink'])
+  })
+
+  it('splits shapes by subtype so the required geometry is visible, not guessed', () => {
+    const shapes = branches().filter((branch) => branch.properties.kind.const === 'shape')
+    expect(shapes.map((branch) => branch.properties.shape?.enum)).toEqual([
+      ['rectangle', 'ellipse'],
+      ['line', 'arrow'],
+    ])
+    expect(shapes[0]?.required).toEqual(['kind', 'pageNumber', 'shape', 'bounds'])
+    expect(shapes[1]?.required).toEqual(['kind', 'pageNumber', 'shape', 'start', 'end'])
+  })
+
+  it('refuses geometry the renderer would draw as the wrong shape', () => {
+    const asLine = { kind: 'shape', pageNumber: 1, shape: 'line', bounds: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 } }
+    const asBox = { kind: 'shape', pageNumber: 1, shape: 'rectangle', start: { x: 0, y: 0 }, end: { x: 1, y: 1 } }
+    expect(createAnnotationsInput.safeParse({ annotations: [asLine] }).success).toBe(false)
+    expect(createAnnotationsInput.safeParse({ annotations: [asBox] }).success).toBe(false)
+    expect(
+      createAnnotationsInput.safeParse({
+        annotations: [{ ...asBox, start: undefined, end: undefined, bounds: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 } }],
+      }).success,
+    ).toBe(true)
   })
 
   it('describes the fields of a branch rather than leaving them to guesswork', () => {
-    const schema = toJsonSchema(createAnnotationsInput) as {
-      properties: { annotations: { items: { oneOf: Array<{ required: Array<string> }> } } }
-    }
-    const [markupBranch] = schema.properties.annotations.items.oneOf
-    expect(markupBranch?.required).toEqual(['kind', 'pageNumber', 'markup', 'target'])
+    expect(branches()[0]?.required).toEqual(['kind', 'pageNumber', 'markup', 'target'])
   })
 
   it('accepts a quote-anchored highlight and rejects one without a target', () => {

@@ -41,7 +41,7 @@ Mimir registers tools in two scopes. The app sets `Origin-Agent-Cluster: ?1` and
 | `navigate_document` | Scroll to a page or an annotation |
 | `list_annotations` | Compact summaries by default, full records with geometry on request |
 | `get_annotation_context` | The page text surrounding one mark |
-| `create_annotations` | Up to 20 marks per call, quote-anchored where possible |
+| `create_annotations` | Up to 20 marks per call, quote-anchored where possible; shape geometry is fixed by subtype |
 | `update_annotations` | Text, resolved state, and style, as one undo step |
 | `delete_annotations` | Removal, scoped to the agent's own marks by default |
 | `undo_last_change` | Revert the most recent change |

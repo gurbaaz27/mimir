@@ -626,19 +626,15 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
                 annotationSchema.parse({ ...base, kind: 'text', bounds: item.bounds, body: item.body, alignment: 'left' }),
               )
             } else if (item.kind === 'shape') {
-              if (!item.bounds && !(item.start && item.end)) {
-                throw new ToolError('A shape needs bounds, or start and end points.')
+              // Store only the geometry this subtype draws from: the renderer and
+              // the exporter both branch on which one is present.
+              const shape = { ...base, kind: 'shape' as const, shape: item.shape }
+              if (item.shape === 'rectangle' || item.shape === 'ellipse') {
+                created.push(annotationSchema.parse({ ...shape, bounds: item.bounds }))
               }
-              created.push(
-                annotationSchema.parse({
-                  ...base,
-                  kind: 'shape',
-                  shape: item.shape,
-                  bounds: item.bounds,
-                  start: item.start,
-                  end: item.end,
-                }),
-              )
+              if (item.shape === 'line' || item.shape === 'arrow') {
+                created.push(annotationSchema.parse({ ...shape, start: item.start, end: item.end }))
+              }
             } else {
               created.push(annotationSchema.parse({ ...base, kind: 'ink', strokes: item.strokes }))
             }
@@ -676,19 +672,23 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
       readOnly: false,
       execute: async (input) => {
         currentDocument()
-        const before: Array<Annotation> = []
-        const after: Array<Annotation> = []
-        const updated: Array<{ id: string; changed: Array<string> }> = []
+        // A batch may name the same annotation twice. Each patch is layered onto
+        // the running result rather than onto the original, so one id contributes
+        // exactly one before and one after record — duplicates in either list
+        // would leave IndexedDB and the in-memory list disagreeing.
+        const originals = new Map<string, Annotation>()
+        const working = new Map<string, Annotation>()
+        const changedFields = new Map<string, Set<string>>()
         const failed: Array<{ id: string; reason: string }> = []
         const now = new Date().toISOString()
 
         for (const update of input.updates) {
-          const existing = state().annotations.find((annotation) => annotation.id === update.id)
-          if (!existing) {
+          const current = working.get(update.id) ?? state().annotations.find((item) => item.id === update.id)
+          if (!current) {
             failed.push({ id: update.id, reason: 'No annotation has this id.' })
             continue
           }
-          const allowed = applicableFields(existing)
+          const allowed = applicableFields(current)
           const rejected: Array<string> = []
           const patch: Record<string, unknown> = {}
           if (update.body !== undefined) {
@@ -699,12 +699,12 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
             if (allowed.resolved) patch.resolved = update.resolved
             else rejected.push('resolved')
           }
-          if (update.style) patch.style = { ...existing.style, ...update.style }
+          if (update.style) patch.style = { ...current.style, ...update.style }
 
           if (rejected.length) {
             failed.push({
               id: update.id,
-              reason: `A ${annotationLabel(existing)} annotation has no ${rejected.join(' or ')} field, so nothing was changed.`,
+              reason: `A ${annotationLabel(current)} annotation has no ${rejected.join(' or ')} field, so nothing was changed.`,
             })
             continue
           }
@@ -713,23 +713,31 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
             continue
           }
 
-          before.push(existing)
-          after.push(
-            annotationSchema.parse({ ...existing, ...patch, lastModifiedBy: 'webmcp', updatedAt: now }),
+          if (!originals.has(update.id)) originals.set(update.id, current)
+          working.set(
+            update.id,
+            annotationSchema.parse({ ...current, ...patch, lastModifiedBy: 'webmcp', updatedAt: now }),
           )
-          updated.push({ id: update.id, changed: Object.keys(patch) })
+          const changed = changedFields.get(update.id) ?? new Set<string>()
+          for (const field of Object.keys(patch)) changed.add(field)
+          changedFields.set(update.id, changed)
         }
 
-        if (!after.length) {
+        if (!working.size) {
           throw new ToolError(
             'No annotations were updated.',
             failed.map((failure) => `${failure.id}: ${failure.reason}`).join(' '),
           )
         }
 
+        const before = [...originals.values()]
+        const after = [...working.values()]
         await state().commit(before, after, `Update ${plural(after.length, 'agent annotation')}`)
         state().notify(`Agent updated ${plural(after.length, 'annotation')} · Undo available`)
-        return { updated, failed }
+        return {
+          updated: [...changedFields].map(([id, changed]) => ({ id, changed: [...changed] })),
+          failed,
+        }
       },
     }),
     tool({

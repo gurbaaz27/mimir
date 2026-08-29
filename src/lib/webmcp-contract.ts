@@ -82,6 +82,35 @@ const pageNumberSchema = z.number().int().positive().describe('One-based PDF pag
 export const annotationKindSchema = z.enum(['markup', 'ink', 'shape', 'text', 'note'])
 
 /**
+ * A shape's geometry is fixed by its subtype rather than left optional: the
+ * renderer and the PDF exporter both branch on which geometry is present, so a
+ * rectangle carrying endpoints — or a line carrying bounds — would draw as the
+ * wrong shape, or not at all.
+ */
+const boxShapeInput = z
+  .object({
+    kind: z.literal('shape'),
+    pageNumber: pageNumberSchema,
+    shape: z.enum(['rectangle', 'ellipse']),
+    bounds: rectSchema.describe('Normalized box the shape is drawn into.'),
+    style: styleInputSchema,
+  })
+  .describe('Draw a rectangle or ellipse, sized by bounds.')
+
+const lineShapeInput = z
+  .object({
+    kind: z.literal('shape'),
+    pageNumber: pageNumberSchema,
+    shape: z.enum(['line', 'arrow']),
+    start: pointSchema.describe('Where the line begins, in normalized page coordinates.'),
+    end: pointSchema.describe('Where the line ends. An arrow points at this end.'),
+    style: styleInputSchema,
+  })
+  .describe('Draw a line or arrow between two points.')
+
+const shapeAnnotationInput = z.discriminatedUnion('shape', [boxShapeInput, lineShapeInput])
+
+/**
  * Geometry is expressed in normalized page coordinates: x and y run 0–1 from the
  * top-left of the page, so a mark survives zoom, rotation, and page size.
  */
@@ -116,17 +145,7 @@ export const createAnnotationSchema = z.discriminatedUnion('kind', [
       style: styleInputSchema,
     })
     .describe('Draw a text box onto the page.'),
-  z
-    .object({
-      kind: z.literal('shape'),
-      pageNumber: pageNumberSchema,
-      shape: z.enum(['rectangle', 'ellipse', 'line', 'arrow']),
-      bounds: rectSchema.optional().describe('For rectangle and ellipse.'),
-      start: pointSchema.optional().describe('For line and arrow.'),
-      end: pointSchema.optional().describe('For line and arrow.'),
-      style: styleInputSchema,
-    })
-    .describe('Draw a shape. Provide bounds, or start and end.'),
+  shapeAnnotationInput,
   z
     .object({
       kind: z.literal('ink'),
@@ -232,7 +251,8 @@ export interface DeletePartition {
 
 /**
  * Split requested ids into what an agent may remove and what it may not.
- * A reader's own marks are protected unless deletion is explicitly widened.
+ * A reader's own marks are protected unless deletion is explicitly widened, and
+ * a repeated id is only reported once.
  */
 export function partitionDeletable(
   annotations: Array<Annotation>,
@@ -240,7 +260,7 @@ export function partitionDeletable(
   includeHumanAnnotations: boolean,
 ): DeletePartition {
   const partition: DeletePartition = { deletable: [], skipped: [] }
-  for (const id of ids) {
+  for (const id of new Set(ids)) {
     const annotation = annotations.find((item) => item.id === id)
     if (!annotation) {
       partition.skipped.push({ id, reason: 'not_found' })
