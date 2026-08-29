@@ -14,6 +14,7 @@ import {
   ZapIcon,
   type AnimatedIconHandle,
 } from '#/components/icons'
+import { Openai } from '#/components/ui/svgs/openai'
 import { getStorageEstimate } from '#/lib/db.client'
 import { getDocumentPathSegment } from '#/lib/document-route'
 import { useEditorStore } from '#/lib/editor-store.client'
@@ -162,7 +163,12 @@ export function LibraryView() {
                     <span className="mark-note">sticky notes</span> as you read.
                   </span>
                   <span className="pitch-line">
-                    Your <span className="mark-agent">agent</span> marks up the same page you do.
+                    Your{' '}
+                    <span className="mark-agent">
+                      <Openai className="mark-agent-glyph" fill="currentColor" />
+                      agent
+                    </span>{' '}
+                    marks up the same page you do.
                   </span>
                 </p>
               </div>

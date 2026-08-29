@@ -231,21 +231,21 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 }
 @keyframes mark-note-in { from { opacity: 0; transform: rotate(2deg) scale(.94); } }
 
-/* The agent wears the same moss dot as the live status pill, and its underline
-   is dotted — a machine-laid mark, not a hand-drawn one. */
+/* The agent signs its own mark. Where the human's marks are coloured and hand
+   drawn, this one stays monochrome and its rule is dotted — laid by a machine. */
 .mark-agent { position: relative; white-space: nowrap; }
-.mark-agent::before {
-  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: .38em; vertical-align: .08em;
-  border-radius: 50%; background: var(--moss); box-shadow: 0 0 0 3px oklch(0.52 0.075 155 / .16);
-  animation: mark-agent-dot 340ms var(--spring) 1080ms both;
+.mark-agent-glyph {
+  display: inline-block; width: .8em; height: .8em; margin-right: .32em; vertical-align: -.03em;
+  color: var(--ink);
+  animation: mark-agent-in 380ms var(--spring) 1080ms both;
 }
 .mark-agent::after {
   content: ""; position: absolute; right: 0; bottom: -.2em; left: 0; height: 3px;
-  background: radial-gradient(circle, var(--moss) 1.05px, transparent 1.15px) repeat-x left center / 5px 3px;
+  background: radial-gradient(circle, var(--ink-soft) 1.05px, transparent 1.15px) repeat-x left center / 5px 3px;
   clip-path: inset(0 100% 0 0);
   animation: mark-draw-in 400ms var(--spring) 1080ms forwards;
 }
-@keyframes mark-agent-dot { from { opacity: 0; transform: scale(.2); } }
+@keyframes mark-agent-in { from { opacity: 0; transform: scale(.5) rotate(-40deg); } }
 .library-intro .primary-button { flex: 0 0 auto; min-height: 50px; margin-bottom: 4px; padding: 0 25px; gap: 10px; font-size: 14.5px; font-weight: 580; }
 .library-intro .primary-button .icon-glyph { margin-left: -2px; }
 
