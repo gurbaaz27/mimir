@@ -35,6 +35,9 @@
   --cream: oklch(0.962 0.019 88);
   --clay: oklch(0.705 0.028 72);
   --bark: oklch(0.455 0.032 62);
+  --mark-sun: #f5c84b;
+  --mark-tide: #159b98;
+  --mark-iris: #7c6fcd;
   --moss: oklch(0.52 0.075 155);
   --danger: oklch(0.53 0.19 28);
 
@@ -185,6 +188,64 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .library-intro { display: flex; margin: 56px 0 40px; align-items: flex-end; justify-content: space-between; gap: 32px; }
 .library-intro h1 { max-width: 15ch; margin: 0; font-family: var(--font-display); font-size: clamp(40px, 5.2vw, 60px); font-weight: 640; line-height: .99; letter-spacing: -.048em; text-wrap: balance; }
 .library-intro p { max-width: 46ch; margin: 18px 0 0; color: var(--muted); font-size: 16px; line-height: 1.55; text-wrap: balance; }
+
+/* The pitch is a specimen of the tools it names: each verb wears its own mark,
+   struck on in sequence the way a reader would work down the line. */
+.library-intro p.library-pitch { max-width: none; color: var(--ink-soft); font-size: 17px; line-height: 1.82; text-wrap: normal; }
+/* Each sentence holds its own line: what you do, then what the agent does. */
+.pitch-line { display: block; max-width: 48ch; text-wrap: pretty; }
+.library-pitch .mark-highlight, .library-pitch .mark-draw, .library-pitch .mark-note, .library-pitch .mark-agent { color: var(--ink); font-weight: 540; }
+
+.mark-highlight {
+  padding: .06em .16em; margin: 0 -.1em; border-radius: 2px; background-color: transparent;
+  background-image: linear-gradient(180deg, transparent 8%, color-mix(in oklab, var(--mark-sun) 62%, white) 8% 88%, transparent 88%);
+  background-repeat: no-repeat; background-size: 0 100%;
+  animation: mark-swipe 460ms var(--spring) 380ms forwards;
+}
+@keyframes mark-swipe { to { background-size: 100% 100%; } }
+
+.mark-draw { position: relative; white-space: nowrap; }
+.mark-draw::after {
+  content: ""; position: absolute; right: -.06em; bottom: -.26em; left: -.06em; height: 7px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='7' viewBox='0 0 13 7'%3E%3Cpath d='M0 4.6Q3.25.9 6.5 4.6T13 4.6' fill='none' stroke='%23159b98' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left bottom / 13px 7px;
+  clip-path: inset(0 100% 0 0);
+  animation: mark-draw-in 420ms var(--spring) 620ms forwards;
+}
+@keyframes mark-draw-in { to { clip-path: inset(0 0 0 0); } }
+
+/* A note torn off the pad: the corner is folded, and it never sat quite straight */
+.mark-note {
+  position: relative; display: inline-block; white-space: nowrap;
+  padding: .09em .38em .13em .32em; margin: 0 -.04em;
+  background: color-mix(in oklab, var(--mark-iris) 20%, white);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
+  box-shadow: 0 1px 1px oklch(0.3 0.05 300 / .13), 0 3px 7px oklch(0.3 0.05 300 / .13);
+  transform: rotate(-1.5deg);
+  animation: mark-note-in 380ms var(--spring) 860ms both;
+}
+.mark-note::after {
+  content: ""; position: absolute; right: 0; bottom: 0;
+  border: 2.5px solid transparent;
+  border-top-color: color-mix(in oklab, var(--mark-iris) 44%, white);
+  border-left-color: color-mix(in oklab, var(--mark-iris) 44%, white);
+}
+@keyframes mark-note-in { from { opacity: 0; transform: rotate(2deg) scale(.94); } }
+
+/* The agent wears the same moss dot as the live status pill, and its underline
+   is dotted — a machine-laid mark, not a hand-drawn one. */
+.mark-agent { position: relative; white-space: nowrap; }
+.mark-agent::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: .38em; vertical-align: .08em;
+  border-radius: 50%; background: var(--moss); box-shadow: 0 0 0 3px oklch(0.52 0.075 155 / .16);
+  animation: mark-agent-dot 340ms var(--spring) 1080ms both;
+}
+.mark-agent::after {
+  content: ""; position: absolute; right: 0; bottom: -.2em; left: 0; height: 3px;
+  background: radial-gradient(circle, var(--moss) 1.05px, transparent 1.15px) repeat-x left center / 5px 3px;
+  clip-path: inset(0 100% 0 0);
+  animation: mark-draw-in 400ms var(--spring) 1080ms forwards;
+}
+@keyframes mark-agent-dot { from { opacity: 0; transform: scale(.2); } }
 .library-intro .primary-button { flex: 0 0 auto; min-height: 50px; margin-bottom: 4px; padding: 0 25px; gap: 10px; font-size: 14.5px; font-weight: 580; }
 .library-intro .primary-button .icon-glyph { margin-left: -2px; }
 
@@ -257,7 +318,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .library-footer { display: flex; margin-top: 26px; align-items: center; justify-content: center; gap: 8px; color: var(--faint); font-size: 11px; }
 
 /* ─────────────────────────  Reader chrome  ───────────────────────── */
-.reader-shell { display: grid; width: 100vw; height: 100dvh; overflow: hidden; grid-template-rows: 54px 66px minmax(0,1fr); background: var(--desk); }
+.reader-shell { position: relative; display: grid; width: 100vw; height: 100dvh; overflow: hidden; grid-template-rows: 54px minmax(0,1fr); background: var(--desk); }
 .reader-topbar { position: relative; z-index: 20; display: grid; grid-template-columns: minmax(260px,1fr) auto minmax(260px,1fr); align-items: center; padding: 0 11px; border-bottom: 1px solid var(--line); background: var(--paper); box-shadow: 0 1px 0 oklch(0.2 0.005 60 / .03); }
 .reader-identity, .reader-navigation, .reader-actions { display: flex; min-width: 0; align-items: center; }
 .reader-identity { gap: 7px; }
@@ -283,8 +344,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .agent-status.available { color: var(--ink-soft); }
 .agent-status.available i { background: var(--moss); box-shadow: 0 0 0 3px oklch(0.52 0.075 155 / .16); }
 
-.annotation-toolbar { position: relative; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 0 12px; border-bottom: 1px solid var(--desk-deep); background: var(--desk); }
-.tool-tray { display: flex; align-items: center; gap: 2px; padding: 4px 5px; border-radius: 14px; background: var(--paper); box-shadow: inset 0 0 0 1px oklch(0.2 0.005 60 / .06), inset 0 1px 0 var(--paper), 0 1px 2px oklch(0.25 0.02 70 / .1), 0 6px 16px oklch(0.28 0.03 70 / .12); }
+.annotation-toolbar { position: absolute; z-index: 20; top: 54px; right: 0; left: 0; display: flex; min-height: 66px; align-items: center; justify-content: center; padding: 0 12px; pointer-events: none; }
+.tool-tray { display: flex; align-items: center; gap: 2px; padding: 4px 5px; border-radius: 14px; background: var(--paper); box-shadow: inset 0 0 0 1px oklch(0.2 0.005 60 / .06), inset 0 1px 0 var(--paper), 0 1px 2px oklch(0.25 0.02 70 / .1), 0 6px 16px oklch(0.28 0.03 70 / .12); pointer-events: auto; }
 .tool-tray > span { display: inline-flex; }
 .tool-tray .tool-group-start { margin-left: 9px; padding-left: 9px; border-left: 1px solid var(--line); }
 .tool-tray .icon-button.is-active { box-shadow: 0 1px 2px oklch(0.2 0.01 60 / .3); }
@@ -482,7 +543,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   .document-sidebar { position: absolute; z-index: 12; top: 0; bottom: 0; left: 0; width: min(290px,82vw); box-shadow: var(--menu-shadow); transform: translateX(-101%); transition: transform 280ms var(--spring); }
   .reader-body.has-sidebar .document-sidebar { transform: none; }
   .document-sidebar > * { min-width: 0; }
-  .annotation-toolbar { justify-content: flex-start; overflow-x: auto; padding: 0 8px; scrollbar-width: none; }
+  .annotation-toolbar { justify-content: flex-start; overflow-x: auto; padding: 0 8px; pointer-events: auto; scrollbar-width: none; }
   .annotation-toolbar::-webkit-scrollbar { display: none; }
   .tool-tray { flex: 0 0 auto; border-radius: 0; background: transparent; box-shadow: none; }
   .tool-tray .icon-button:not(.is-active) { background: var(--paper); }
@@ -499,6 +560,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   .library-intro { display: block; margin: 34px 0 26px; }
   .library-intro h1 { font-size: 34px; }
   .library-intro p { font-size: 15px; }
+  .library-intro p.library-pitch { font-size: 15.5px; line-height: 1.85; }
   .library-intro .primary-button { width: 100%; margin: 22px 0 0; }
   .library-claims { gap: 8px 18px; margin-top: 24px; }
   .document-open { grid-template-columns: 38px minmax(0,1fr) 24px; gap: 12px; padding: 12px 48px 12px 16px; }

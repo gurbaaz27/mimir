@@ -8,7 +8,7 @@ Brand line: **where ~~gods~~ humans and ai study together**. Lowercase throughou
 
 ## Color
 
-Authored in OKLCH. One rule carries the reader: **chrome is white, the workspace is a warm desk, and the page is the only pure paper on screen.** Topbar, navigator, and tool tray are white; the desk beneath them is warm enough that a page floats on it. Text is a crisp near-black through gray. The logo's cream, clay, and bark appear only as accents — never as interface hierarchy. Clay marks progress and the active page; it is the one hue allowed to signal state. Action is expressed as ink-black, not as a brand hue. Annotation colors remain a separate semantic palette.
+Authored in OKLCH. One rule carries the reader: **chrome is white, the workspace is a warm desk, and the page is the only pure paper on screen.** Topbar, navigator, and tool tray are white; the desk beneath them is warm enough that a page floats on it. Text is a crisp near-black through gray. The logo's cream, clay, and bark appear only as accents — never as interface hierarchy. Clay marks progress and the active page; it is the one hue allowed to signal state. Action is expressed as ink-black, not as a brand hue. Annotation colors remain a separate semantic palette, and the library pitch is the one place they surface outside the page: each verb it names wears the mark that tool actually draws.
 
 - Paper: `oklch(1 0 0)` · Background: `oklch(0.995 0.0015 90)`
 - Surface: `oklch(0.978 0.0035 85)` · Sunken: `oklch(0.958 0.005 85)`
@@ -29,7 +29,7 @@ Marketing copy is lowercase and plain-spoken; product chrome stays sentence case
 
 ## Layout
 
-The reader is a full-height shell: 54px topbar, 52px tool rail, then a fluid canvas with an optional 228px page navigator. The rail is desk-toned and holds a floating white tool tray, so the instruments read as an object laid on the desk rather than a band of chrome. There is no annotations sidebar — marks are edited on the page itself, and a floating selection bar carries only what a mark cannot express inline. The library is a 940px column: a display-scale masthead, the embossed primary action, then the document ledger. 8px spatial base, 4px inside toolbars.
+The reader is a full-height shell: a 54px topbar followed by a fluid canvas with an optional 228px page navigator. The annotation tools float over the top of that canvas as a single white tray; there is no separate rail consuming workspace. There is no annotations sidebar — marks are edited on the page itself, and a floating selection bar carries only what a mark cannot express inline. The library is a 940px column: a display-scale masthead, the embossed primary action, then the document ledger. 8px spatial base, 4px inside toolbars.
 
 ## Components
 

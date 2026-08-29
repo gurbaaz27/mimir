@@ -155,7 +155,16 @@ export function LibraryView() {
                 <h1 id="library-title">
                   <Tagline />
                 </h1>
-                <p>Highlight, draw, and pin sticky notes as you read. Your agent marks up the same page you do.</p>
+                <p className="library-pitch">
+                  <span className="pitch-line">
+                    <mark className="mark-highlight">Highlight</mark>,{' '}
+                    <span className="mark-draw">draw</span>, and pin{' '}
+                    <span className="mark-note">sticky notes</span> as you read.
+                  </span>
+                  <span className="pitch-line">
+                    Your <span className="mark-agent">agent</span> marks up the same page you do.
+                  </span>
+                </p>
               </div>
               <button className="primary-button" type="button" onClick={() => inputRef.current?.click()}>
                 <PlusIcon size={16} />
