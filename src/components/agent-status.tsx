@@ -10,7 +10,7 @@ type AgentStatusProps = {
 const statusLabel: Record<WebMcpStatus, string> = {
   available: 'Agent Ready',
   registering: 'Connecting',
-  unavailable: 'No Agent',
+  unavailable: 'WebMCP Unavailable',
 }
 
 const statusTitle: Record<WebMcpStatus, string> = {
