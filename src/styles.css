@@ -489,8 +489,31 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .annotation-glyph { pointer-events: visiblePainted; cursor: pointer; }
 .annotation-glyph:hover { filter: saturate(1.1); }
 .annotation-selection { fill: none; stroke: var(--ink); stroke-width: 1.5px; stroke-dasharray: .012 .008; vector-effect: non-scaling-stroke; pointer-events: none; }
+.annotation-selection.is-editable { stroke: color-mix(in oklab, var(--ink) 55%, transparent); stroke-width: 1px; stroke-dasharray: none; }
 .annotation-marquee { fill: oklch(0.52 0.075 155 / .08); stroke: var(--ink); stroke-width: 1.5px; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 .annotation-draft { fill: none; stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: .84; }
+/* Resize handles. The SVG overlay is a 0..1 viewBox stretched over the page, so
+   the sizes there are computed in page units by the component; the note layer is
+   plain HTML and only has to undo the note's own zoom scaling. */
+.annotation-resize-handles { pointer-events: none; }
+.annotation-resize-handle { touch-action: none; }
+.annotation-resize-hit { fill: transparent; stroke: none; pointer-events: all; }
+.annotation-resize-dot { fill: var(--paper); stroke: var(--ink); stroke-width: 1.25px; vector-effect: non-scaling-stroke; pointer-events: none; transition: fill 120ms ease-out, stroke-width 120ms ease-out; }
+.annotation-resize-handle:hover .annotation-resize-dot, .annotation-resize-handle:active .annotation-resize-dot { fill: var(--moss); stroke: var(--moss); stroke-width: 2px; }
+
+.note-layer .annotation-resize-handles { position: absolute; z-index: 4; inset: 0; pointer-events: none; }
+.note-layer .annotation-resize-handle { position: absolute; width: var(--handle-size); height: var(--handle-size); padding: 0; border: 1.25px solid var(--ink); border-radius: calc(var(--handle-size) * .3); background: var(--paper); transform: translate(-50%, -50%); box-shadow: 0 1px 2px oklch(0.2 0.01 60 / .3); pointer-events: auto; touch-action: none; transition: background 120ms ease-out, border-color 120ms ease-out; }
+/* A grab target bigger than the mark it draws, so small notes stay resizable. */
+.note-layer .annotation-resize-handle::before { position: absolute; top: 50%; left: 50%; width: var(--handle-hit); height: var(--handle-hit); transform: translate(-50%, -50%); content: ""; }
+.note-layer .annotation-resize-handle:hover, .note-layer .annotation-resize-handle:active { border-color: var(--moss); background: var(--moss); }
+.note-layer .annotation-resize-handle.is-nw { top: 0; left: 0; }
+.note-layer .annotation-resize-handle.is-n { top: 0; left: 50%; }
+.note-layer .annotation-resize-handle.is-ne { top: 0; left: 100%; }
+.note-layer .annotation-resize-handle.is-e { top: 50%; left: 100%; }
+.note-layer .annotation-resize-handle.is-se { top: 100%; left: 100%; }
+.note-layer .annotation-resize-handle.is-s { top: 100%; left: 50%; }
+.note-layer .annotation-resize-handle.is-sw { top: 100%; left: 0; }
+.note-layer .annotation-resize-handle.is-w { top: 50%; left: 0; }
 
 /* Sticky notes + on-page text boxes (plain HTML: SVG foreignObject would scale px units by the page width) */
 .note-layer { position: absolute; z-index: 3; inset: 0; pointer-events: none; }

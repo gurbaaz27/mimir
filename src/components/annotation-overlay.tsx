@@ -1,13 +1,30 @@
-import { useMemo, useRef, useState, type PointerEvent } from 'react'
-import type { Annotation, Point } from '#/lib/annotations'
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import type { Annotation, NormalizedRect, Point } from '#/lib/annotations'
 import { annotationBounds, annotationColors, createAnnotationBase } from '#/lib/annotations'
-import { constrainDrawingEnd } from '#/lib/annotation-geometry'
+import {
+  constrainDrawingEnd,
+  constrainToAxis,
+  resizeBounds,
+  resizeHandleAnchors,
+  resizeHandlePoint,
+  sameRect,
+  samePoint,
+  type ResizeHandle,
+} from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
 
 interface AnnotationOverlayProps {
   pageNumber: number
   annotations: Array<Annotation>
+  pageWidth: number
+  pageHeight: number
 }
+
+/** Handle sizes in CSS pixels; they are converted to page units so they neither stretch nor zoom. */
+const HANDLE_PIXELS = 9
+const HANDLE_HIT_PIXELS = 22
+/** Below this, the mid-edge handles would overlap the corners, so they are dropped. */
+const EDGE_HANDLE_MINIMUM_PIXELS = HANDLE_PIXELS * 3
 
 function asPoint(event: { clientX: number; clientY: number }, svg: SVGSVGElement): Point {
   const rect = svg.getBoundingClientRect()
@@ -26,26 +43,174 @@ function boundsBetween(start: Point, end: Point) {
   }
 }
 
-function AnnotationGlyph({
-  annotation,
-  selected,
-  dragOffset,
+type ResizeTarget = ResizeHandle | 'start' | 'end'
+
+type ResizePreview = {
+  id: string
+  bounds?: NormalizedRect
+  start?: Point
+  end?: Point
+}
+
+/** A single grab point: a generous transparent hit area behind a small visible marker. */
+function ResizeHandle({
+  cursor,
+  label,
+  round,
+  x,
+  y,
+  halfWidth,
+  halfHeight,
+  hitWidth,
+  hitHeight,
   onPointerDown,
   onPointerMove,
   onPointerUp,
 }: {
-  annotation: Annotation
-  selected: boolean
-  dragOffset: { dx: number; dy: number } | null
-  onPointerDown: (event: PointerEvent<SVGGElement>, id: string) => void
+  cursor: string
+  label: string
+  round: boolean
+  x: number
+  y: number
+  halfWidth: number
+  halfHeight: number
+  hitWidth: number
+  hitHeight: number
+  onPointerDown: (event: PointerEvent<SVGGElement>) => void
   onPointerMove: (event: PointerEvent<SVGGElement>) => void
   onPointerUp: (event: PointerEvent<SVGGElement>) => void
 }) {
-  const bounds = annotationBounds(annotation)
+  return (
+    <g
+      className="annotation-resize-handle"
+      role="button"
+      aria-label={label}
+      style={{ cursor }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
+      <rect
+        className="annotation-resize-hit"
+        x={x - hitWidth}
+        y={y - hitHeight}
+        width={hitWidth * 2}
+        height={hitHeight * 2}
+      />
+      {round ? (
+        <ellipse className="annotation-resize-dot" cx={x} cy={y} rx={halfWidth} ry={halfHeight} />
+      ) : (
+        <rect
+          className="annotation-resize-dot"
+          x={x - halfWidth}
+          y={y - halfHeight}
+          width={halfWidth * 2}
+          height={halfHeight * 2}
+          rx={halfWidth * 0.35}
+          ry={halfHeight * 0.35}
+        />
+      )}
+    </g>
+  )
+}
+
+function AnnotationGlyph({
+  annotation,
+  selected,
+  editable,
+  pageWidth,
+  pageHeight,
+  dragOffset,
+  resizePreview,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onResizeStart,
+  onResizeMove,
+  onResizeEnd,
+}: {
+  annotation: Annotation
+  selected: boolean
+  editable: boolean
+  pageWidth: number
+  pageHeight: number
+  dragOffset: { dx: number; dy: number } | null
+  resizePreview: ResizePreview | null
+  onPointerDown: (event: PointerEvent<SVGGElement>, id: string) => void
+  onPointerMove: (event: PointerEvent<SVGGElement>) => void
+  onPointerUp: (event: PointerEvent<SVGGElement>) => void
+  onResizeStart: (event: PointerEvent<SVGGElement>, annotation: Annotation, handle: ResizeTarget) => void
+  onResizeMove: (event: PointerEvent<SVGGElement>) => void
+  onResizeEnd: (event: PointerEvent<SVGGElement>) => void
+}) {
+  const preview = resizePreview?.id === annotation.id ? resizePreview : null
+  const displayedAnnotation = preview && annotation.kind === 'shape'
+    ? { ...annotation, ...(preview.bounds ? { bounds: preview.bounds } : {}), ...(preview.start ? { start: preview.start } : {}), ...(preview.end ? { end: preview.end } : {}) }
+    : annotation
+  const bounds = annotationBounds(displayedAnnotation)
   const common = {
     stroke: annotation.style.color,
     opacity: annotation.style.opacity,
     vectorEffect: 'non-scaling-stroke' as const,
+  }
+
+  // The overlay is a 0..1 viewBox stretched over the page, so a circle drawn in
+  // user units renders as an ellipse and grows with the zoom. Every handle
+  // dimension is therefore expressed as a fraction of the current page size.
+  const unitX = 1 / Math.max(pageWidth, 1)
+  const unitY = 1 / Math.max(pageHeight, 1)
+  const handleGeometry = {
+    halfWidth: HANDLE_PIXELS / 2 * unitX,
+    halfHeight: HANDLE_PIXELS / 2 * unitY,
+    hitWidth: HANDLE_HIT_PIXELS / 2 * unitX,
+    hitHeight: HANDLE_HIT_PIXELS / 2 * unitY,
+  }
+
+  const shapeBounds = displayedAnnotation.kind === 'shape' ? displayedAnnotation.bounds : undefined
+  const wideEnough = (shapeBounds?.width ?? 0) * pageWidth >= EDGE_HANDLE_MINIMUM_PIXELS
+  const tallEnough = (shapeBounds?.height ?? 0) * pageHeight >= EDGE_HANDLE_MINIMUM_PIXELS
+  const shapeHandles = shapeBounds
+    ? resizeHandleAnchors
+        .filter((handle) => {
+          if (handle.name === 'n' || handle.name === 's') return wideEnough
+          if (handle.name === 'e' || handle.name === 'w') return tallEnough
+          return true
+        })
+        .map((handle) => ({
+          name: handle.name as ResizeTarget,
+          cursor: handle.cursor,
+          label: `Resize ${displayedAnnotation.kind === 'shape' ? displayedAnnotation.shape : 'shape'} from the ${handle.label}`,
+          round: false,
+          x: shapeBounds.x + shapeBounds.width * handle.x,
+          y: shapeBounds.y + shapeBounds.height * handle.y,
+        }))
+    : []
+  const endpointHandles = displayedAnnotation.kind === 'shape' && displayedAnnotation.start && displayedAnnotation.end
+    ? ([
+        { point: displayedAnnotation.start, name: 'start' as const, label: 'start' },
+        { point: displayedAnnotation.end, name: 'end' as const, label: 'end' },
+      ]).map((entry) => ({
+        name: entry.name as ResizeTarget,
+        cursor: 'move',
+        label: `Move the ${entry.label} of the ${displayedAnnotation.shape}`,
+        round: true,
+        x: entry.point.x,
+        y: entry.point.y,
+      }))
+    : []
+  const handles = shapeBounds ? shapeHandles : endpointHandles
+  const showHandles = editable && displayedAnnotation.kind === 'shape' && handles.length > 0
+
+  // While the handles are shown they sit exactly on the frame, so the frame is
+  // drawn tight to the bounds; otherwise it is inset by a hairline of padding.
+  const padX = showHandles ? 0 : 4 * unitX
+  const padY = showHandles ? 0 : 4 * unitY
+  const frame = bounds && {
+    x: Math.max(0, bounds.x - padX),
+    y: Math.max(0, bounds.y - padY),
+    width: Math.min(1, bounds.x + bounds.width + padX) - Math.max(0, bounds.x - padX),
+    height: Math.min(1, bounds.y + bounds.height + padY) - Math.max(0, bounds.y - padY),
   }
 
   return (
@@ -88,59 +253,74 @@ function AnnotationGlyph({
             strokeWidth={annotation.style.strokeWidth ?? 2.5}
           />
         ))}
-      {annotation.kind === 'shape' && annotation.bounds && annotation.shape === 'ellipse' && (
+      {displayedAnnotation.kind === 'shape' && displayedAnnotation.bounds && displayedAnnotation.shape === 'ellipse' && (
         <ellipse
-          cx={annotation.bounds.x + annotation.bounds.width / 2}
-          cy={annotation.bounds.y + annotation.bounds.height / 2}
-          rx={annotation.bounds.width / 2}
-          ry={annotation.bounds.height / 2}
-          fill={annotation.style.fill ?? 'none'}
+          cx={displayedAnnotation.bounds.x + displayedAnnotation.bounds.width / 2}
+          cy={displayedAnnotation.bounds.y + displayedAnnotation.bounds.height / 2}
+          rx={displayedAnnotation.bounds.width / 2}
+          ry={displayedAnnotation.bounds.height / 2}
+          fill={displayedAnnotation.style.fill ?? 'none'}
           {...common}
-          strokeWidth={annotation.style.strokeWidth ?? 2}
+          strokeWidth={displayedAnnotation.style.strokeWidth ?? 2}
         />
       )}
-      {annotation.kind === 'shape' && annotation.bounds && annotation.shape === 'rectangle' && (
+      {displayedAnnotation.kind === 'shape' && displayedAnnotation.bounds && displayedAnnotation.shape === 'rectangle' && (
         <rect
-          {...annotation.bounds}
-          fill={annotation.style.fill ?? 'none'}
+          {...displayedAnnotation.bounds}
+          fill={displayedAnnotation.style.fill ?? 'none'}
           {...common}
-          strokeWidth={annotation.style.strokeWidth ?? 2}
+          strokeWidth={displayedAnnotation.style.strokeWidth ?? 2}
         />
       )}
-      {annotation.kind === 'shape' && annotation.start && annotation.end && (
+      {displayedAnnotation.kind === 'shape' && displayedAnnotation.start && displayedAnnotation.end && (
         <line
-          x1={annotation.start.x}
-          y1={annotation.start.y}
-          x2={annotation.end.x}
-          y2={annotation.end.y}
+          x1={displayedAnnotation.start.x}
+          y1={displayedAnnotation.start.y}
+          x2={displayedAnnotation.end.x}
+          y2={displayedAnnotation.end.y}
           fill="none"
           {...common}
-          strokeWidth={annotation.style.strokeWidth ?? 2}
-          markerEnd={annotation.shape === 'arrow' ? `url(#arrow-${annotation.id})` : undefined}
+          strokeWidth={displayedAnnotation.style.strokeWidth ?? 2}
+          markerEnd={displayedAnnotation.shape === 'arrow' ? `url(#arrow-${displayedAnnotation.id})` : undefined}
         />
       )}
-      {annotation.kind === 'shape' && annotation.shape === 'arrow' && (
+      {displayedAnnotation.kind === 'shape' && displayedAnnotation.shape === 'arrow' && (
         <defs>
           <marker id={`arrow-${annotation.id}`} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
             <path d="M0,0 L0,6 L7,3 z" fill={annotation.style.color} />
           </marker>
         </defs>
       )}
-      {selected && bounds && (
+      {selected && frame && (
         <rect
-          className="annotation-selection"
-          x={Math.max(0, bounds.x - 0.006)}
-          y={Math.max(0, bounds.y - 0.006)}
-          width={Math.min(1 - bounds.x, bounds.width + 0.012)}
-          height={Math.min(1 - bounds.y, bounds.height + 0.012)}
+          className={`annotation-selection ${showHandles ? 'is-editable' : ''}`}
+          {...frame}
           pathLength="1"
         />
+      )}
+      {showHandles && (
+        <g className="annotation-resize-handles">
+          {handles.map((handle) => (
+            <ResizeHandle
+              key={handle.name}
+              cursor={handle.cursor}
+              label={handle.label}
+              round={handle.round}
+              x={handle.x}
+              y={handle.y}
+              {...handleGeometry}
+              onPointerDown={(event) => onResizeStart(event, annotation, handle.name)}
+              onPointerMove={onResizeMove}
+              onPointerUp={onResizeEnd}
+            />
+          ))}
+        </g>
       )}
     </g>
   )
 }
 
-export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlayProps) {
+export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeight }: AnnotationOverlayProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const tool = useEditorStore((state) => state.tool)
   const color = useEditorStore((state) => state.color)
@@ -152,11 +332,22 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
   const beginAnnotationDrag = useEditorStore((state) => state.beginAnnotationDrag)
   const updateAnnotationDrag = useEditorStore((state) => state.updateAnnotationDrag)
   const finishAnnotationDrag = useEditorStore((state) => state.finishAnnotationDrag)
+  const updateAnnotation = useEditorStore((state) => state.updateAnnotation)
   const createAnnotations = useEditorStore((state) => state.createAnnotations)
   const startRef = useRef<Point | null>(null)
   const pointsRef = useRef<Array<Point>>([])
   const marqueeRef = useRef<{ pointerId: number; start: Point; moved: boolean } | null>(null)
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; ids: Array<string> } | null>(null)
+  const resizeRef = useRef<{
+    pointerId: number
+    annotation: Extract<Annotation, { kind: 'shape' }>
+    handle: ResizeTarget
+    /** Where the handle sat, and where the pointer was, when the drag began. */
+    grab: Point
+    grabPointer: Point
+    preview: ResizePreview
+  } | null>(null)
+  const [resizePreview, setResizePreview] = useState<ResizePreview | null>(null)
   const [draftEnd, setDraftEnd] = useState<Point | null>(null)
   const [selectionEnd, setSelectionEnd] = useState<Point | null>(null)
   const isDirectTool = ['ink', 'rectangle', 'ellipse', 'line', 'arrow', 'text', 'note'].includes(tool)
@@ -207,6 +398,104 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
       dx: Math.max(-minX, Math.min(1 - maxX, dx)),
       dy: Math.max(-minY, Math.min(1 - maxY, dy)),
     }
+  }
+
+  const endResize = (commit: boolean) => {
+    const resize = resizeRef.current
+    resizeRef.current = null
+    setResizePreview(null)
+    if (!resize || !commit) return
+    const { annotation, preview } = resize
+    // A click that never moved must not land an entry on the undo stack.
+    if (preview.bounds) {
+      if (sameRect(preview.bounds, annotation.bounds)) return
+      void updateAnnotation(annotation.id, { bounds: preview.bounds } as Partial<Annotation>)
+    } else if (preview.start && preview.end) {
+      if (samePoint(preview.start, annotation.start) && samePoint(preview.end, annotation.end)) return
+      void updateAnnotation(annotation.id, { start: preview.start, end: preview.end } as Partial<Annotation>)
+    }
+  }
+
+  // A resize holds the pointer captured, so Escape is the only way out that
+  // discards the drag instead of committing it.
+  useEffect(() => {
+    if (!resizePreview) return
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      resizeRef.current = null
+      setResizePreview(null)
+    }
+    window.addEventListener('keydown', cancel)
+    return () => window.removeEventListener('keydown', cancel)
+  }, [resizePreview])
+
+  const handleResizeStart = (
+    event: PointerEvent<SVGGElement>,
+    annotation: Annotation,
+    handle: ResizeTarget,
+  ) => {
+    if (event.button !== 0 || annotation.kind !== 'shape') return
+    const isEndpoint = handle === 'start' || handle === 'end'
+    if (isEndpoint ? !(annotation.start && annotation.end) : !annotation.bounds) return
+    const svg = svgRef.current
+    if (!svg) return
+    event.stopPropagation()
+    event.preventDefault()
+    setSelected(annotation.id)
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const preview: ResizePreview = isEndpoint
+      ? { id: annotation.id, start: annotation.start, end: annotation.end }
+      : { id: annotation.id, bounds: annotation.bounds }
+    const grab = isEndpoint
+      ? (handle === 'start' ? annotation.start : annotation.end) ?? { x: 0, y: 0 }
+      : resizeHandlePoint(annotation.bounds ?? { x: 0, y: 0, width: 0, height: 0 }, handle)
+    resizeRef.current = { pointerId: event.pointerId, annotation, handle, grab, grabPointer: asPoint(event, svg), preview }
+    setResizePreview(preview)
+  }
+
+  const handleResizeMove = (event: PointerEvent<SVGGElement>) => {
+    const resize = resizeRef.current
+    const svg = svgRef.current
+    if (!resize || resize.pointerId !== event.pointerId || !svg) return
+    event.stopPropagation()
+    event.preventDefault()
+    const { annotation, handle, grab } = resize
+    // Track the pointer as an offset from where the handle was grabbed rather
+    // than snapping the edge to the cursor.
+    const pointer = asPoint(event, svg)
+    const target = {
+      x: Math.max(0, Math.min(1, grab.x + (pointer.x - resize.grabPointer.x))),
+      y: Math.max(0, Math.min(1, grab.y + (pointer.y - resize.grabPointer.y))),
+    }
+    let preview: ResizePreview
+    if (handle === 'start' || handle === 'end') {
+      const pinned = handle === 'start' ? annotation.end : annotation.start
+      if (!pinned) return
+      const moved = event.shiftKey ? constrainToAxis(pinned, target, pageWidth, pageHeight) : target
+      preview = {
+        id: annotation.id,
+        start: handle === 'start' ? moved : annotation.start,
+        end: handle === 'end' ? moved : annotation.end,
+      }
+    } else if (annotation.bounds) {
+      preview = {
+        id: annotation.id,
+        bounds: resizeBounds(annotation.bounds, handle, target, pageWidth, pageHeight, event.shiftKey),
+      }
+    } else {
+      return
+    }
+    resize.preview = preview
+    setResizePreview(preview)
+  }
+
+  const handleResizeEnd = (event: PointerEvent<SVGGElement>) => {
+    const resize = resizeRef.current
+    if (!resize || resize.pointerId !== event.pointerId) return
+    event.stopPropagation()
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    endResize(event.type !== 'pointercancel')
   }
 
   const handleAnnotationPointerDown = (event: PointerEvent<SVGGElement>, id: string) => {
@@ -341,10 +630,17 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
           key={annotation.id}
           annotation={annotation}
           selected={selectedIds.includes(annotation.id)}
+          editable={tool === 'select' && selectedIds.length === 1 && selectedIds.includes(annotation.id) && !annotationDrag}
+          pageWidth={pageWidth}
+          pageHeight={pageHeight}
           dragOffset={annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null}
+          resizePreview={resizePreview}
           onPointerDown={handleAnnotationPointerDown}
           onPointerMove={handleAnnotationPointerMove}
           onPointerUp={handleAnnotationPointerUp}
+          onResizeStart={handleResizeStart}
+          onResizeMove={handleResizeMove}
+          onResizeEnd={handleResizeEnd}
         />
       ))}
       {selectionBounds && <rect className="annotation-marquee" {...selectionBounds} />}

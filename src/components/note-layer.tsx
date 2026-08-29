@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
 import type { Annotation, NormalizedRect, Point } from '#/lib/annotations'
+import { resizeBounds, resizeHandleAnchors, resizeHandlePoint, sameRect, type ResizeHandle } from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
 
 type NoteAnnotation = Extract<Annotation, { kind: 'note' }>
@@ -21,9 +22,162 @@ const PIN_SIZE = 22
 const TEXT_BOX_LINE_HEIGHT = 1.28
 const TEXT_BOX_VERTICAL_PADDING = 4
 const TEXT_BOX_VERTICAL_BORDER = 2
+/** Handle sizes in CSS pixels, before the note's own zoom scaling is undone. */
+const HANDLE_PIXELS = 10
+const HANDLE_HIT_PIXELS = 22
+/** Below this, the mid-edge handles would overlap the corners, so they are dropped. */
+const EDGE_HANDLE_MINIMUM_PIXELS = HANDLE_PIXELS * 3
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max))
+}
+
+/**
+ * Pointer plumbing shared by the sticky note and the text box. Both resize a
+ * normalized rect against the page, preview it locally while the pointer is
+ * down, and commit once at the end.
+ */
+function useBoxResize({
+  pageWidth,
+  pageHeight,
+  bounds,
+  onCommit,
+}: {
+  pageWidth: number
+  pageHeight: number
+  /** The rect the next drag starts from; read once, at pointer down. */
+  bounds: NormalizedRect
+  onCommit: (bounds: NormalizedRect) => void
+}) {
+  const [preview, setPreview] = useState<NormalizedRect | null>(null)
+  const resizeRef = useRef<{
+    pointerId: number
+    handle: ResizeHandle
+    clientX: number
+    clientY: number
+    origin: NormalizedRect
+    next: NormalizedRect
+  } | null>(null)
+
+  // The pointer is captured for the whole drag, so Escape is the only way out
+  // that discards it instead of committing it.
+  useEffect(() => {
+    if (!preview) return
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      resizeRef.current = null
+      setPreview(null)
+    }
+    window.addEventListener('keydown', cancel)
+    return () => window.removeEventListener('keydown', cancel)
+  }, [preview])
+
+  const onPointerDown = (event: PointerEvent<HTMLButtonElement>, handle: ResizeHandle) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    resizeRef.current = {
+      pointerId: event.pointerId,
+      handle,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      origin: bounds,
+      next: bounds,
+    }
+    setPreview(bounds)
+  }
+
+  const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+    const resize = resizeRef.current
+    if (!resize || resize.pointerId !== event.pointerId) return
+    event.stopPropagation()
+    event.preventDefault()
+    // `resizeBounds` wants the new position of the dragged edge. Offsetting the
+    // handle's own starting point keeps the grab offset; offsetting the rect's
+    // origin instead — as this used to — collapses the box whenever the east or
+    // south edge is dragged.
+    const grab = resizeHandlePoint(resize.origin, resize.handle)
+    const next = resizeBounds(
+      resize.origin,
+      resize.handle,
+      {
+        x: grab.x + (event.clientX - resize.clientX) / Math.max(pageWidth, 1),
+        y: grab.y + (event.clientY - resize.clientY) / Math.max(pageHeight, 1),
+      },
+      pageWidth,
+      pageHeight,
+      event.shiftKey,
+    )
+    resize.next = next
+    setPreview(next)
+  }
+
+  const onPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+    const resize = resizeRef.current
+    if (!resize || resize.pointerId !== event.pointerId) return
+    resizeRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    setPreview(null)
+    // A click that never moved must not land an entry on the undo stack.
+    if (event.type === 'pointercancel' || sameRect(resize.next, resize.origin)) return
+    onCommit(resize.next)
+  }
+
+  return { preview, onPointerDown, onPointerMove, onPointerUp }
+}
+
+/** The eight grab points around a box, sized so they never scale with the page zoom. */
+function ResizeHandles({
+  label,
+  width,
+  height,
+  scale,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+}: {
+  label: string
+  /** Rendered size of the box in CSS pixels, used to drop handles that would collide. */
+  width: number
+  height: number
+  /** CSS scale already applied to the box, which the handles undo. */
+  scale: number
+  onPointerDown: (event: PointerEvent<HTMLButtonElement>, handle: ResizeHandle) => void
+  onPointerMove: (event: PointerEvent<HTMLButtonElement>) => void
+  onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void
+}) {
+  const safeScale = Math.max(scale, 0.01)
+  const wideEnough = width >= EDGE_HANDLE_MINIMUM_PIXELS
+  const tallEnough = height >= EDGE_HANDLE_MINIMUM_PIXELS
+  return (
+    <div
+      className="annotation-resize-handles"
+      style={{
+        '--handle-size': `${HANDLE_PIXELS / safeScale}px`,
+        '--handle-hit': `${HANDLE_HIT_PIXELS / safeScale}px`,
+      } as React.CSSProperties}
+    >
+      {resizeHandleAnchors.map((handle) => {
+        if ((handle.name === 'n' || handle.name === 's') && !wideEnough) return null
+        if ((handle.name === 'e' || handle.name === 'w') && !tallEnough) return null
+        return (
+          <button
+            key={handle.name}
+            type="button"
+            className={`annotation-resize-handle is-${handle.name}`}
+            aria-label={`Resize ${label} from the ${handle.label}`}
+            style={{ cursor: handle.cursor }}
+            onPointerDown={(event) => onPointerDown(event, handle.name)}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          />
+        )
+      })}
+    </div>
+  )
 }
 
 function StickyNote({
@@ -62,14 +216,40 @@ function StickyNote({
   }, [selected, collapsed, annotation.body])
 
   const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
-  const point = dragPoint ?? {
-    x: annotation.point.x + (groupOffset?.dx ?? 0),
-    y: annotation.point.y + (groupOffset?.dy ?? 0),
+  // `pageWidth` already includes the zoom, so the default note keeps a fixed
+  // pixel size and a zoom-independent normalized one.
+  const defaultWidth = Math.min(0.9, NOTE_WIDTH * zoom / Math.max(pageWidth, 1))
+  const defaultHeight = Math.min(0.9, NOTE_HEIGHT * zoom / Math.max(pageHeight, 1))
+  const defaultBounds: NormalizedRect = {
+    x: clamp(annotation.point.x, 0, 1 - defaultWidth),
+    y: clamp(annotation.point.y, 0, 1 - defaultHeight),
+    width: defaultWidth,
+    height: defaultHeight,
   }
-  const width = (collapsed ? PIN_SIZE : NOTE_WIDTH) * zoom
-  const height = (collapsed ? PIN_SIZE : NOTE_HEIGHT) * zoom
-  const left = clamp(point.x * pageWidth, 0, Math.max(0, pageWidth - width))
-  const top = clamp(point.y * pageHeight, 0, Math.max(0, pageHeight - height))
+  const storedBounds = annotation.bounds ?? defaultBounds
+  const baseBounds = {
+    ...storedBounds,
+    x: storedBounds.x + (groupOffset?.dx ?? 0),
+    y: storedBounds.y + (groupOffset?.dy ?? 0),
+  }
+  const resize = useBoxResize({
+    pageWidth,
+    pageHeight,
+    bounds: storedBounds,
+    // `point` stays the note's anchor — the exporter and the agent tools read it
+    // — so it has to follow the resized top-left corner.
+    onCommit: (next) =>
+      void update(annotation.id, { point: { x: next.x, y: next.y }, bounds: next } as Partial<Annotation>),
+  })
+  const bounds = resize.preview ?? (dragPoint
+    ? { ...baseBounds, x: dragPoint.x, y: dragPoint.y }
+    : baseBounds)
+  // The note is laid out unscaled and then scaled with the page, so its own
+  // width and height are the on-screen size divided back out by the zoom.
+  const width = collapsed ? PIN_SIZE * zoom : bounds.width * pageWidth
+  const height = collapsed ? PIN_SIZE * zoom : bounds.height * pageHeight
+  const left = clamp(bounds.x * pageWidth, 0, Math.max(0, pageWidth - width))
+  const top = clamp(bounds.y * pageHeight, 0, Math.max(0, pageHeight - height))
 
   const select = () => {
     setSelected(annotation.id)
@@ -108,8 +288,8 @@ function StickyNote({
       updateAnnotationDrag(dx / pageWidth, dy / pageHeight)
     } else {
       setDragPoint({
-        x: clamp(annotation.point.x + dx / pageWidth, 0, 1),
-        y: clamp(annotation.point.y + dy / pageHeight, 0, 1),
+        x: clamp(baseBounds.x + dx / pageWidth, 0, 1 - baseBounds.width),
+        y: clamp(baseBounds.y + dy / pageHeight, 0, 1 - baseBounds.height),
       })
     }
   }
@@ -121,7 +301,10 @@ function StickyNote({
     if (drag?.group) {
       void finishAnnotationDrag()
     } else if (drag?.moved && dragPoint) {
-      void update(annotation.id, { point: dragPoint } as Partial<Annotation>).finally(() => setDragPoint(null))
+      const patch = annotation.bounds
+        ? { point: dragPoint, bounds: { ...annotation.bounds, x: dragPoint.x, y: dragPoint.y } }
+        : { point: dragPoint }
+      void update(annotation.id, patch as Partial<Annotation>).finally(() => setDragPoint(null))
     } else {
       setDragPoint(null)
     }
@@ -167,8 +350,8 @@ function StickyNote({
       style={{
         left,
         top,
-        width: NOTE_WIDTH,
-        height: NOTE_HEIGHT,
+        width: width / Math.max(zoom, 0.01),
+        height: height / Math.max(zoom, 0.01),
         transform: `scale(${zoom})`,
         '--note-color': annotation.style.color,
       } as React.CSSProperties}
@@ -206,6 +389,17 @@ function StickyNote({
           onBlur={commitBody}
         />
       </div>
+      {tool === 'select' && selected && selectedIds.length === 1 && !annotationDrag && (
+        <ResizeHandles
+          label="note"
+          width={width}
+          height={height}
+          scale={zoom}
+          onPointerDown={resize.onPointerDown}
+          onPointerMove={resize.onPointerMove}
+          onPointerUp={resize.onPointerUp}
+        />
+      )}
     </div>
   )
 }
@@ -250,9 +444,17 @@ function TextBox({
     x: annotation.bounds.x + (groupOffset?.dx ?? 0),
     y: annotation.bounds.y + (groupOffset?.dy ?? 0),
   }
-  const bounds = dragBounds ?? {
+  const resize = useBoxResize({
+    pageWidth,
+    pageHeight,
+    bounds: annotation.bounds,
+    onCommit: (next) => void update(annotation.id, { bounds: next } as Partial<Annotation>),
+  })
+  // The stored height is a floor: a manual resize sets it, and typing past it
+  // grows the box so text is never clipped.
+  const bounds = resize.preview ?? dragBounds ?? {
     ...baseBounds,
-    height: contentHeight ?? baseBounds.height,
+    height: Math.max(baseBounds.height, contentHeight ?? 0),
   }
 
   useLayoutEffect(() => {
@@ -329,8 +531,11 @@ function TextBox({
   }
 
   const commit = () => {
-    const nextBounds = contentHeight !== null && Math.abs(contentHeight - annotation.bounds.height) > 0.0001
-      ? { ...annotation.bounds, height: contentHeight }
+    // Only ever grow: shrinking here would undo a manual resize the moment the
+    // body is edited.
+    const grownHeight = Math.max(annotation.bounds.height, contentHeight ?? 0)
+    const nextBounds = grownHeight - annotation.bounds.height > 0.0001
+      ? { ...annotation.bounds, height: grownHeight }
       : undefined
     if (body === annotation.body && !nextBounds) return
     void update(annotation.id, { body, ...(nextBounds ? { bounds: nextBounds } : {}) } as Partial<Annotation>)
@@ -377,6 +582,17 @@ function TextBox({
       >
         <span aria-hidden="true" />
       </button>
+      {tool === 'select' && selected && selectedIds.length === 1 && !annotationDrag && (
+        <ResizeHandles
+          label="text box"
+          width={bounds.width * pageWidth}
+          height={bounds.height * pageHeight}
+          scale={1}
+          onPointerDown={resize.onPointerDown}
+          onPointerMove={resize.onPointerMove}
+          onPointerUp={resize.onPointerUp}
+        />
+      )}
     </div>
   )
 }

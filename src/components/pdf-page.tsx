@@ -127,7 +127,12 @@ export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations, onPageWi
     >
       <canvas ref={canvasRef} aria-label={`Page ${pageNumber}`} />
       <div ref={textRef} className="textLayer" />
-      <AnnotationOverlay pageNumber={pageNumber} annotations={annotations} />
+      <AnnotationOverlay
+        pageNumber={pageNumber}
+        annotations={annotations}
+        pageWidth={dimensions.width}
+        pageHeight={dimensions.height}
+      />
       <NoteLayer
         pageNumber={pageNumber}
         annotations={annotations}
