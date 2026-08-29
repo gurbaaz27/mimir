@@ -49,6 +49,14 @@ function isToolbarSettings(value: unknown): value is ToolbarOffset & { orientati
   )
 }
 
+function persistToolbarSettings(offset: ToolbarOffset, orientation: ToolbarOrientation) {
+  try {
+    window.localStorage.setItem(toolbarSettingsKey, JSON.stringify({ ...offset, orientation }))
+  } catch {
+    // Storage can be unavailable in private browsing or blocked documents.
+  }
+}
+
 export function AnnotationToolbar() {
   const activeTool = useEditorStore((state) => state.tool)
   const setTool = useEditorStore((state) => state.setTool)
@@ -70,6 +78,7 @@ export function AnnotationToolbar() {
   const toolbarOffsetRef = useRef<ToolbarOffset>({ x: 0, y: 0 })
   const [orientation, setOrientation] = useState<ToolbarOrientation>('horizontal')
   const orientationRef = useRef<ToolbarOrientation>('horizontal')
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
 
   const activeColor = annotationColors.find((item) => item.value === color)
@@ -79,14 +88,12 @@ export function AnnotationToolbar() {
       const saved = window.localStorage.getItem(toolbarSettingsKey)
       if (!saved) return
       const parsed: unknown = JSON.parse(saved)
-      if (!isToolbarSettings(parsed) || !trayRef.current) return
-      const bounds = trayRef.current.getBoundingClientRect()
-      const minX = -bounds.left
-      const minY = -bounds.top
-      const next = {
-        x: Math.min(Math.max(minX, parsed.x), Math.max(minX, window.innerWidth - bounds.right)),
-        y: Math.min(Math.max(minY, parsed.y), Math.max(minY, window.innerHeight - bounds.bottom)),
-      }
+      if (!isToolbarSettings(parsed)) return
+
+      // Apply the saved offset before clamping it. The tray's dimensions depend
+      // on its orientation, so measuring the default horizontal tray here would
+      // clamp a saved vertical position against the wrong width and height.
+      const next = { x: parsed.x, y: parsed.y }
       toolbarOffsetRef.current = next
       setToolbarOffset(next)
       if (parsed.orientation) {
@@ -95,11 +102,15 @@ export function AnnotationToolbar() {
       }
     } catch {
       // Storage can be unavailable in private browsing or blocked documents.
+    } finally {
+      setSettingsLoaded(true)
     }
   }, [])
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
+    if (!settingsLoaded) return
+
+    const clampToolbar = () => {
       const tray = trayRef.current
       if (!tray) return
       const offset = toolbarOffsetRef.current
@@ -115,26 +126,26 @@ export function AnnotationToolbar() {
       if (next.x === offset.x && next.y === offset.y) return
       toolbarOffsetRef.current = next
       setToolbarOffset(next)
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [orientation])
-
-  const persistSettings = () => {
-    try {
-      window.localStorage.setItem(
-        toolbarSettingsKey,
-        JSON.stringify({ ...toolbarOffsetRef.current, orientation: orientationRef.current }),
-      )
-    } catch {
-      // Storage can be unavailable in private browsing or blocked documents.
+      persistToolbarSettings(next, orientationRef.current)
     }
-  }
+
+    let frame = window.requestAnimationFrame(clampToolbar)
+    const handleResize = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(clampToolbar)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [orientation, settingsLoaded])
 
   const toggleOrientation = () => {
     const next = orientationRef.current === 'horizontal' ? 'vertical' : 'horizontal'
     orientationRef.current = next
     setOrientation(next)
-    persistSettings()
+    persistToolbarSettings(toolbarOffsetRef.current, next)
   }
 
   const startDrag = (event: PointerEvent<HTMLButtonElement>) => {
@@ -175,7 +186,7 @@ export function AnnotationToolbar() {
 
   const endDrag = (event?: PointerEvent<HTMLButtonElement>) => {
     if (event && dragRef.current?.pointerId !== event.pointerId) return
-    if (dragRef.current) persistSettings()
+    if (dragRef.current) persistToolbarSettings(toolbarOffsetRef.current, orientationRef.current)
     dragRef.current = null
     setIsDragging(false)
   }
