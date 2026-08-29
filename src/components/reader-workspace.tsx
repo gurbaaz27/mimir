@@ -53,6 +53,7 @@ export function ReaderWorkspace() {
   const redo = useEditorStore((state) => state.redo)
   const deleteAnnotations = useEditorStore((state) => state.deleteAnnotations)
   const indexDocument = useEditorStore((state) => state.indexDocument)
+  const loadOutline = useEditorStore((state) => state.loadOutline)
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
@@ -81,6 +82,7 @@ export function ReaderWorkspace() {
         if (cancelled) return void document.cleanup()
         setPdf(document)
         void indexDocument(document)
+        void loadOutline(document)
       })
       .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'The PDF could not be rendered.'))
     return () => {

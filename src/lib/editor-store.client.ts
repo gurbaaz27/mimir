@@ -3,6 +3,7 @@ import { createStore } from 'zustand/vanilla'
 import { useStore } from 'zustand'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { db, type DocumentRecord } from './db.client'
+import type { OutlineEntry } from './pdf.client'
 import { getDocumentSlug } from './document-route'
 import {
   annotationSchema,
@@ -33,6 +34,7 @@ interface EditorState {
   documents: Array<DocumentRecord>
   activeDocument: DocumentRecord | null
   annotations: Array<Annotation>
+  outline: Array<OutlineEntry> | null
   selectedAnnotationId: string | null
   tool: EditorTool
   color: string
@@ -77,6 +79,7 @@ interface EditorState {
   undo: () => Promise<void>
   redo: () => Promise<void>
   indexDocument: (loadedPdf?: PDFDocumentProxy) => Promise<void>
+  loadOutline: (pdf: PDFDocumentProxy) => Promise<void>
 }
 
 async function loadDocumentsWithStableRoutes() {
@@ -131,6 +134,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   documents: [],
   activeDocument: null,
   annotations: [],
+  outline: null,
   selectedAnnotationId: null,
   tool: 'select',
   color: '#f5c84b',
@@ -209,6 +213,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       status: 'ready',
       activeDocument,
       annotations,
+      outline: null,
       currentPage: document.lastPage,
       zoom: document.zoom,
       rotation: document.rotation,
@@ -238,6 +243,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       status: 'idle',
       activeDocument: null,
       annotations: [],
+      outline: null,
       selectedAnnotationId: null,
       history: [],
       future: [],
@@ -362,6 +368,14 @@ export const editorStore = createStore<EditorState>((set, get) => ({
     } finally {
       if (!loadedPdf) await pdf.cleanup()
     }
+  },
+
+  loadOutline: async (pdf) => {
+    const document = get().activeDocument
+    if (!document || get().outline) return
+    const { readOutline } = await import('./pdf.client')
+    const outline = await readOutline(pdf)
+    if (get().activeDocument?.id === document.id) set({ outline })
   },
 }))
 

@@ -55,3 +55,43 @@ export async function extractPageText(pdf: PDFDocumentProxy, pageNumber: number)
     .replace(/[ \t]{2,}/g, ' ')
     .trim()
 }
+
+export interface OutlineEntry {
+  title: string
+  /** Nesting depth, zero for a top-level section. */
+  level: number
+  pageNumber?: number
+}
+
+/**
+ * Flatten a PDF's bookmark tree into readable entries with resolved page
+ * numbers. Destinations that cannot be resolved keep their title and lose only
+ * the page, so a partly broken outline still reads.
+ */
+export async function readOutline(pdf: PDFDocumentProxy): Promise<Array<OutlineEntry>> {
+  const items = await pdf.getOutline().catch(() => null)
+  if (!items?.length) return []
+
+  const resolvePageNumber = async (destination: unknown) => {
+    try {
+      const resolved = typeof destination === 'string' ? await pdf.getDestination(destination) : destination
+      const reference = Array.isArray(resolved) ? resolved[0] : undefined
+      if (reference && typeof reference === 'object') return (await pdf.getPageIndex(reference)) + 1
+    } catch {
+      return undefined
+    }
+    return undefined
+  }
+
+  type OutlineNode = Awaited<ReturnType<PDFDocumentProxy['getOutline']>>[number]
+  const walk = async (nodes: Array<OutlineNode>, level: number): Promise<Array<OutlineEntry>> => {
+    const entries: Array<OutlineEntry> = []
+    for (const node of nodes) {
+      entries.push({ title: node.title, level, pageNumber: await resolvePageNumber(node.dest) })
+      if (node.items?.length) entries.push(...(await walk(node.items, level + 1)))
+    }
+    return entries
+  }
+
+  return walk(items, 0)
+}

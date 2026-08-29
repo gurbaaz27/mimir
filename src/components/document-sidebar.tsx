@@ -45,8 +45,9 @@ export function DocumentSidebar({ pdf, open }: { pdf: PDFDocumentProxy; open: bo
   const currentPage = useEditorStore((state) => state.currentPage)
   const pageCount = useEditorStore((state) => state.activeDocument?.pageCount ?? 0)
   const setSidebarOpen = useEditorStore((state) => state.setSidebarOpen)
+  const outline = useEditorStore((state) => state.outline)
+  const loadOutline = useEditorStore((state) => state.loadOutline)
   const [tab, setTab] = useState<'pages' | 'outline'>('pages')
-  const [outline, setOutline] = useState<Array<{ title: string; pageNumber?: number }>>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
     count: pageCount,
@@ -57,24 +58,8 @@ export function DocumentSidebar({ pdf, open }: { pdf: PDFDocumentProxy; open: bo
 
   useEffect(() => {
     if (tab !== 'outline') return
-    void pdf.getOutline().then(async (items) => {
-      if (!items) return setOutline([])
-      const entries = await Promise.all(
-        items.map(async (item) => {
-          let pageNumber: number | undefined
-          try {
-            const destination = typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest
-            const reference = destination?.[0]
-            if (reference && typeof reference === 'object') pageNumber = (await pdf.getPageIndex(reference)) + 1
-          } catch {
-            pageNumber = undefined
-          }
-          return { title: item.title, pageNumber }
-        }),
-      )
-      setOutline(entries)
-    })
-  }, [pdf, tab])
+    void loadOutline(pdf)
+  }, [loadOutline, pdf, tab])
 
   useEffect(() => {
     if (tab === 'pages') virtualizer.scrollToIndex(Math.max(0, currentPage - 1), { align: 'auto' })
@@ -113,20 +98,23 @@ export function DocumentSidebar({ pdf, open }: { pdf: PDFDocumentProxy; open: bo
         </div>
       ) : (
         <nav className="outline-list" aria-label="PDF outline">
-          {outline.length ? (
+          {outline?.length ? (
             outline.map((item, index) => (
               <button
                 type="button"
                 key={`${item.title}-${index}`}
                 disabled={!item.pageNumber}
+                style={item.level ? { paddingInlineStart: `${12 + item.level * 12}px` } : undefined}
                 onClick={() => item.pageNumber && window.dispatchEvent(new CustomEvent('mimir:navigate', { detail: { pageNumber: item.pageNumber } }))}
               >
                 <span>{item.title}</span>
                 {item.pageNumber && <small>{item.pageNumber}</small>}
               </button>
             ))
-          ) : (
+          ) : outline ? (
             <div className="panel-empty"><BookTextIcon size={22} /><p>This PDF has no outline.</p></div>
+          ) : (
+            <div className="panel-empty"><BookTextIcon size={22} /><p>Reading the outline…</p></div>
           )}
         </nav>
       )}
