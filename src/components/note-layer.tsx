@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
-import type { Annotation, Point } from '#/lib/annotations'
+import type { Annotation, NormalizedRect, Point } from '#/lib/annotations'
 import { useEditorStore } from '#/lib/editor-store.client'
 
 type NoteAnnotation = Extract<Annotation, { kind: 'note' }>
@@ -37,7 +37,6 @@ function StickyNote({
   zoom: number
 }) {
   const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
-  const setInspectorOpen = useEditorStore((state) => state.setInspectorOpen)
   const update = useEditorStore((state) => state.updateAnnotation)
   const [body, setBody] = useState(annotation.body)
   const [collapsed, setCollapsed] = useState(annotation.resolved)
@@ -59,7 +58,6 @@ function StickyNote({
 
   const select = () => {
     setSelected(annotation.id)
-    setInspectorOpen(true)
   }
 
   const commitBody = () => {
@@ -186,24 +184,67 @@ function TextBox({
   zoom: number
 }) {
   const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
-  const setInspectorOpen = useEditorStore((state) => state.setInspectorOpen)
   const update = useEditorStore((state) => state.updateAnnotation)
   const [body, setBody] = useState(annotation.body)
+  const [dragBounds, setDragBounds] = useState<NormalizedRect | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
+  const dragBoundsRef = useRef<NormalizedRect | null>(null)
 
   useEffect(() => setBody(annotation.body), [annotation.body])
   useEffect(() => {
     if (selected && !annotation.body) inputRef.current?.focus()
   }, [selected, annotation.body])
 
+  const bounds = dragBounds ?? annotation.bounds
+
+  const handleDragStart = (event: PointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    setSelected(annotation.id)
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = { x: event.clientX, y: event.clientY, moved: false }
+    dragBoundsRef.current = annotation.bounds
+  }
+
+  const handleDragMove = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    if (!drag || !pageWidth || !pageHeight) return
+    const dx = event.clientX - drag.x
+    const dy = event.clientY - drag.y
+    if (!drag.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
+    drag.moved = true
+    const nextBounds = {
+      ...annotation.bounds,
+      x: clamp(annotation.bounds.x + dx / pageWidth, 0, 1 - annotation.bounds.width),
+      y: clamp(annotation.bounds.y + dy / pageHeight, 0, 1 - annotation.bounds.height),
+    }
+    dragBoundsRef.current = nextBounds
+    setDragBounds(nextBounds)
+  }
+
+  const handleDragEnd = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    dragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    const nextBounds = dragBoundsRef.current
+    dragBoundsRef.current = null
+    if (drag?.moved && nextBounds) {
+      void update(annotation.id, { bounds: nextBounds } as Partial<Annotation>).finally(() => setDragBounds(null))
+    } else {
+      setDragBounds(null)
+    }
+  }
+
   return (
     <div
       className={`text-annotation-box ${selected ? 'is-selected' : ''}`}
       style={{
-        left: annotation.bounds.x * pageWidth,
-        top: annotation.bounds.y * pageHeight,
-        width: annotation.bounds.width * pageWidth,
-        height: annotation.bounds.height * pageHeight,
+        left: bounds.x * pageWidth,
+        top: bounds.y * pageHeight,
+        width: bounds.width * pageWidth,
+        height: bounds.height * pageHeight,
         '--note-color': annotation.style.color,
       } as React.CSSProperties}
       data-annotation-id={annotation.id}
@@ -221,15 +262,24 @@ function TextBox({
           fontSize: (annotation.style.fontSize ?? 12) * zoom,
           textAlign: annotation.alignment,
         }}
-        onFocus={() => {
-          setSelected(annotation.id)
-          setInspectorOpen(true)
-        }}
+        onFocus={() => setSelected(annotation.id)}
         onChange={(event) => setBody(event.target.value)}
         onBlur={() => {
           if (body !== annotation.body) void update(annotation.id, { body } as Partial<Annotation>)
         }}
       />
+      <button
+        type="button"
+        className="text-annotation-drag-handle"
+        aria-label="Move text box"
+        title="Move text box"
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDragMove}
+        onPointerUp={handleDragEnd}
+        onPointerCancel={handleDragEnd}
+      >
+        <span aria-hidden="true" />
+      </button>
     </div>
   )
 }

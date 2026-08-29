@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bookmark, ListTree, X } from 'lucide-react'
+import { BookTextIcon, BookmarkIcon, PanelLeftCloseIcon } from '#/components/icons'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import { useEditorStore } from '#/lib/editor-store.client'
@@ -85,14 +85,14 @@ export function DocumentSidebar({ pdf }: { pdf: PDFDocumentProxy }) {
       <div className="sidebar-header">
         <div className="sidebar-tabs" role="tablist" aria-label="Navigation view">
           <button type="button" role="tab" aria-selected={tab === 'pages'} onClick={() => setTab('pages')}>
-            <Bookmark size={15} /> Pages
+            <BookmarkIcon size={15} /> Pages
           </button>
           <button type="button" role="tab" aria-selected={tab === 'outline'} onClick={() => setTab('outline')}>
-            <ListTree size={15} /> Outline
+            <BookTextIcon size={15} /> Outline
           </button>
         </div>
         <button className="close-sidebar" type="button" aria-label="Close document navigation" onClick={() => setSidebarOpen(false)}>
-          <X size={16} />
+          <PanelLeftCloseIcon size={17} />
         </button>
       </div>
       {tab === 'pages' ? (
@@ -126,7 +126,7 @@ export function DocumentSidebar({ pdf }: { pdf: PDFDocumentProxy }) {
               </button>
             ))
           ) : (
-            <div className="panel-empty compact"><ListTree size={22} /><p>This PDF has no outline.</p></div>
+            <div className="panel-empty"><BookTextIcon size={22} /><p>This PDF has no outline.</p></div>
           )}
         </nav>
       )}

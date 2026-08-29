@@ -5,6 +5,8 @@ import type { Annotation } from '#/lib/annotations'
 import { editorStore, useEditorStore } from '#/lib/editor-store.client'
 import { PdfPage } from './pdf-page'
 
+const LARGE_PAGE_JUMP = 5
+
 interface PdfViewerProps {
   pdf: PDFDocumentProxy
   pageCount: number
@@ -52,7 +54,13 @@ export function PdfViewer({ pdf, pageCount, zoom, rotation, annotations }: PdfVi
   useEffect(() => {
     const navigate = (event: Event) => {
       const detail = (event as CustomEvent<{ pageNumber?: number }>).detail
-      if (detail.pageNumber) virtualizer.scrollToIndex(detail.pageNumber - 1, { align: 'start' })
+      if (detail.pageNumber) {
+        const distance = Math.abs(detail.pageNumber - editorStore.getState().currentPage)
+        virtualizer.scrollToIndex(detail.pageNumber - 1, {
+          align: 'start',
+          behavior: distance > LARGE_PAGE_JUMP ? 'auto' : 'smooth',
+        })
+      }
     }
     window.addEventListener('mimir:navigate', navigate)
     return () => window.removeEventListener('mimir:navigate', navigate)

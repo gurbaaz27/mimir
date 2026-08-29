@@ -1,27 +1,32 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes } from 'react'
+import { useRef } from 'react'
 import { Tooltip } from 'radix-ui'
+import type { AnimatedIcon, AnimatedIconHandle } from './icons'
 
 export function MimirMark({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="brand" aria-label="Mimir">
-      <span className="brand-mark" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
-      {!compact && <span className="brand-name">Mimir</span>}
+    <div className="brand" aria-label="mimir">
+      <img className="brand-mark" src="/mimir-logo.png" alt="" width={30} height={30} />
+      {!compact && <span className="brand-name">mimir</span>}
     </div>
   )
 }
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label: string
+  icon: AnimatedIcon
+  size?: number
   shortcut?: string
   active?: boolean
-  children: ReactNode
 }
 
-export function IconButton({ label, shortcut, active, children, className = '', ...props }: IconButtonProps) {
+/**
+ * The button owns the icon's hover animation, so the motion fires anywhere on
+ * the target rather than only over the glyph itself.
+ */
+export function IconButton({ label, icon: Icon, size = 17, shortcut, active, className = '', ...props }: IconButtonProps) {
+  const iconRef = useRef<AnimatedIconHandle>(null)
+
   return (
     <Tooltip.Root delayDuration={500}>
       <Tooltip.Trigger asChild>
@@ -30,9 +35,13 @@ export function IconButton({ label, shortcut, active, children, className = '', 
           className={`icon-button ${active ? 'is-active' : ''} ${className}`}
           aria-label={label}
           aria-pressed={active}
+          onPointerEnter={() => iconRef.current?.startAnimation()}
+          onPointerLeave={() => iconRef.current?.stopAnimation()}
+          onFocus={() => iconRef.current?.startAnimation()}
+          onBlur={() => iconRef.current?.stopAnimation()}
           {...props}
         >
-          {children}
+          <Icon ref={iconRef} size={size} />
         </button>
       </Tooltip.Trigger>
       <Tooltip.Portal>

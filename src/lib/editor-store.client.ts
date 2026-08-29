@@ -40,7 +40,6 @@ interface EditorState {
   zoom: number
   rotation: number
   sidebarOpen: boolean
-  inspectorOpen: boolean
   searchOpen: boolean
   toast: string | null
   history: Array<HistoryEntry>
@@ -58,7 +57,6 @@ interface EditorState {
   setRotation: (rotation: number) => void
   setSelectedAnnotation: (id: string | null) => void
   setSidebarOpen: (open: boolean) => void
-  setInspectorOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
   notify: (message: string) => void
   commit: (
@@ -140,7 +138,6 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   zoom: 1,
   rotation: 0,
   sidebarOpen: true,
-  inspectorOpen: true,
   searchOpen: false,
   toast: null,
   history: [],
@@ -267,7 +264,6 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   setRotation: (rotation) => set({ rotation: ((rotation % 360) + 360) % 360 }),
   setSelectedAnnotation: (selectedAnnotationId) => set({ selectedAnnotationId }),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
-  setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   notify: (toast) => {
     set({ toast })
@@ -325,7 +321,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       annotations: applyChangeToList(state.annotations, entry.after, entry.before),
       history: state.history.slice(0, -1),
       future: [...state.future, entry],
-      toast: `Undid ${entry.label.toLowerCase()}`,
+      toast: `Undo ${entry.label.toLowerCase()}`,
     }))
   },
 
@@ -337,7 +333,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       annotations: applyChangeToList(state.annotations, entry.before, entry.after),
       history: [...state.history, entry],
       future: state.future.slice(0, -1),
-      toast: `Redid ${entry.label.toLowerCase()}`,
+      toast: `Redo ${entry.label.toLowerCase()}`,
     }))
   },
 

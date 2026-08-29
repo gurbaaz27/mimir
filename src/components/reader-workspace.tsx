@@ -1,31 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import {
-  ArrowLeft,
-  Bot,
-  ChevronDown,
-  Download,
-  LoaderCircle,
-  MessageSquareText,
-  Minus,
-  PanelLeft,
-  Plus,
-  Redo2,
-  RotateCw,
-  Search,
-  Undo2,
-} from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 import { Dialog, DropdownMenu, Tooltip } from 'radix-ui'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { Annotation } from '#/lib/annotations'
+import { AgentStatus } from './agent-status'
 import { editorStore, useEditorStore, type EditorTool } from '#/lib/editor-store.client'
 import { loadPdf } from '#/lib/pdf.client'
-import { useWebMcp } from '#/lib/webmcp.client'
-import { AnnotationInspector } from './annotation-inspector'
+import {
+  ArrowLeftIcon,
+  ChevronDownIcon,
+  DownloadIcon,
+  MinusIcon,
+  PanelLeftOpenIcon,
+  PlusIcon,
+  RedoIcon,
+  RotateCwIcon,
+  SearchIcon,
+  UndoIcon,
+} from '#/components/icons'
 import { AnnotationToolbar } from './annotation-toolbar'
 import { DocumentSidebar } from './document-sidebar'
 import { PdfViewer } from './pdf-viewer'
 import { SearchPanel } from './search-panel'
+import { SelectionBar } from './selection-bar'
 import { IconButton, MimirMark } from './ui'
 
 export function ReaderWorkspace() {
@@ -36,7 +34,6 @@ export function ReaderWorkspace() {
   const zoom = useEditorStore((state) => state.zoom)
   const rotation = useEditorStore((state) => state.rotation)
   const sidebarOpen = useEditorStore((state) => state.sidebarOpen)
-  const inspectorOpen = useEditorStore((state) => state.inspectorOpen)
   const searchOpen = useEditorStore((state) => state.searchOpen)
   const toast = useEditorStore((state) => state.toast)
   const history = useEditorStore((state) => state.history)
@@ -48,7 +45,6 @@ export function ReaderWorkspace() {
   const setZoom = useEditorStore((state) => state.setZoom)
   const setRotation = useEditorStore((state) => state.setRotation)
   const setSidebarOpen = useEditorStore((state) => state.setSidebarOpen)
-  const setInspectorOpen = useEditorStore((state) => state.setInspectorOpen)
   const setSearchOpen = useEditorStore((state) => state.setSearchOpen)
   const setTool = useEditorStore((state) => state.setTool)
   const commit = useEditorStore((state) => state.commit)
@@ -63,7 +59,6 @@ export function ReaderWorkspace() {
   const [exportFormat, setExportFormat] = useState<'pdf' | 'json'>('pdf')
   const [exportProgress, setExportProgress] = useState<number | null>(null)
   const temporaryPanTool = useRef<EditorTool | null>(null)
-  const webMcpStatus = useWebMcp(activeDocument?.id ?? null)
 
   const goToLibrary = async () => {
     await closeDocument()
@@ -120,7 +115,6 @@ export function ReaderWorkspace() {
 
   useEffect(() => {
     const shortcuts: Record<string, () => void> = {
-      v: () => setTool('select'),
       h: () => setTool('highlight'),
       u: () => setTool('underline'),
       d: () => setTool('ink'),
@@ -131,6 +125,12 @@ export function ReaderWorkspace() {
       a: () => setTool('arrow'),
     }
     const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        restoreTemporaryPan()
+        setTool('select')
+        return
+      }
       const target = event.target as HTMLElement | null
       if (target?.matches('input, textarea, [contenteditable="true"]')) return
       if (event.code === 'Space' && !event.repeat) {
@@ -228,13 +228,13 @@ export function ReaderWorkspace() {
         onPointerDown={(event) => {
           if (!selectedId) return
           const target = event.target
-          if (target instanceof Element && target.closest('.annotation-detail')) return
+          if (target instanceof Element && target.closest('.selection-bar')) return
           setSelected(null)
         }}
       >
         <header className="reader-topbar">
           <div className="reader-identity">
-            <IconButton label="Back to library" onClick={() => void goToLibrary()}><ArrowLeft size={17} /></IconButton>
+            <IconButton label="Back to library" icon={ArrowLeftIcon} onClick={() => void goToLibrary()} />
             <MimirMark compact />
             <div className="document-title">
               <strong>{activeDocument.title || activeDocument.name.replace(/\.pdf$/i, '')}</strong>
@@ -253,10 +253,10 @@ export function ReaderWorkspace() {
               <span>of {activeDocument.pageCount}</span>
             </label>
             <span className="topbar-divider" />
-            <IconButton label="Zoom out" shortcut="−" onClick={() => setZoom(zoom - 0.1)} disabled={zoom <= 0.5}><Minus size={16} /></IconButton>
+            <IconButton label="Zoom out" shortcut="−" icon={MinusIcon} size={16} onClick={() => setZoom(zoom - 0.1)} disabled={zoom <= 0.5} />
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
-                <button className="zoom-trigger" type="button">{Math.round(zoom * 100)}% <ChevronDown size={13} /></button>
+                <button className="zoom-trigger" type="button">{Math.round(zoom * 100)}% <ChevronDownIcon size={13} /></button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="menu-content zoom-menu" sideOffset={7}>
@@ -266,26 +266,24 @@ export function ReaderWorkspace() {
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
-            <IconButton label="Zoom in" shortcut="+" onClick={() => setZoom(zoom + 0.1)} disabled={zoom >= 3}><Plus size={16} /></IconButton>
+            <IconButton label="Zoom in" shortcut="+" icon={PlusIcon} size={16} onClick={() => setZoom(zoom + 0.1)} disabled={zoom >= 3} />
           </div>
           <div className="reader-actions">
-            <span className={`agent-status ${webMcpStatus}`} title={webMcpStatus === 'available' ? 'WebMCP tools are available to browser agents' : 'WebMCP is unavailable in this browser'}>
-              <Bot size={14} /> {webMcpStatus === 'available' ? 'Agent ready' : 'Local only'}
-            </span>
-            <IconButton label="Search" shortcut="⌘F" active={searchOpen} onClick={() => setSearchOpen(!searchOpen)}><Search size={17} /></IconButton>
-            <IconButton label="Rotate clockwise" onClick={() => setRotation(rotation + 90)}><RotateCw size={17} /></IconButton>
-            <IconButton label="Undo" shortcut="⌘Z" disabled={!history.length} onClick={() => void undo()}><Undo2 size={17} /></IconButton>
-            <IconButton label="Redo" shortcut="⇧⌘Z" disabled={!future.length} onClick={() => void redo()}><Redo2 size={17} /></IconButton>
-            <button className="export-button" type="button" onClick={() => setExportOpen(true)}><Download size={16} /> Export</button>
+            <AgentStatus documentId={activeDocument.id} variant="reader" />
+            <IconButton label="Search" shortcut="⌘F" icon={SearchIcon} active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} />
+            <IconButton label="Rotate clockwise" icon={RotateCwIcon} onClick={() => setRotation(rotation + 90)} />
+            <IconButton label="Undo" shortcut="⌘Z" icon={UndoIcon} disabled={!history.length} onClick={() => void undo()} />
+            <IconButton label="Redo" shortcut="⇧⌘Z" icon={RedoIcon} disabled={!future.length} onClick={() => void redo()} />
+            <button className="export-button" type="button" onClick={() => setExportOpen(true)}><DownloadIcon size={16} /> Export</button>
           </div>
         </header>
 
         <AnnotationToolbar />
         {searchOpen && <SearchPanel />}
 
-        <div className={`reader-body ${sidebarOpen ? 'has-sidebar' : ''} ${inspectorOpen ? 'has-inspector' : ''}`}>
+        <div className={`reader-body ${sidebarOpen ? 'has-sidebar' : ''}`}>
           {!sidebarOpen && (
-            <button className="open-panel open-sidebar" type="button" aria-label="Open document navigation" onClick={() => setSidebarOpen(true)}><PanelLeft size={17} /></button>
+            <button className="open-panel" type="button" aria-label="Open document navigation" onClick={() => setSidebarOpen(true)}><PanelLeftOpenIcon size={17} /></button>
           )}
           {pdf && sidebarOpen && <DocumentSidebar pdf={pdf} />}
           <section className="viewer-stage" aria-label="PDF reader">
@@ -296,12 +294,8 @@ export function ReaderWorkspace() {
             ) : (
               <div className="viewer-loading"><LoaderCircle className="spin" /><span>Preparing the document…</span></div>
             )}
+            <SelectionBar />
           </section>
-          {inspectorOpen ? <AnnotationInspector /> : (
-            <button className="open-panel open-inspector" type="button" aria-label="Open annotations panel" onClick={() => setInspectorOpen(true)}>
-              <MessageSquareText size={17} /><span>{annotations.length}</span>
-            </button>
-          )}
         </div>
 
         {toast && (
@@ -337,7 +331,7 @@ export function ReaderWorkspace() {
                 </label>
                 <Dialog.Close asChild><button type="button" className="secondary-button">Cancel</button></Dialog.Close>
                 <button type="button" className="primary-button" disabled={exportProgress !== null} onClick={() => void saveExport()}>
-                  {exportProgress !== null ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />}
+                  {exportProgress !== null ? <LoaderCircle className="spin" size={16} /> : <DownloadIcon size={16} />}
                   {exportProgress !== null ? 'Preparing…' : `Save ${exportFormat.toUpperCase()}`}
                 </button>
               </div>

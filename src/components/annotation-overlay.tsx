@@ -122,7 +122,6 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
   const activeDocument = useEditorStore((state) => state.activeDocument)
   const selectedId = useEditorStore((state) => state.selectedAnnotationId)
   const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
-  const setInspectorOpen = useEditorStore((state) => state.setInspectorOpen)
   const createAnnotations = useEditorStore((state) => state.createAnnotations)
   const startRef = useRef<Point | null>(null)
   const pointsRef = useRef<Array<Point>>([])
@@ -155,7 +154,6 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
         'Add text',
       )
     }
-    setInspectorOpen(true)
   }
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {

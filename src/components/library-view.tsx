@@ -1,22 +1,38 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  ArrowRight,
-  CheckCircle2,
-  FileText,
-  FolderOpen,
-  HardDrive,
-  MoreHorizontal,
-  Plus,
-  ShieldCheck,
-  Trash2,
-  UploadCloud,
-} from 'lucide-react'
 import { DropdownMenu, Tooltip } from 'radix-ui'
 import { useNavigate } from '@tanstack/react-router'
+import {
+  ArrowRightIcon,
+  BotIcon,
+  FileTextIcon,
+  FolderOpenIcon,
+  LockIcon,
+  MoreIcon,
+  PlusIcon,
+  TrashIcon,
+  UploadIcon,
+  ZapIcon,
+  type AnimatedIconHandle,
+} from '#/components/icons'
 import { getStorageEstimate } from '#/lib/db.client'
 import { getDocumentPathSegment } from '#/lib/document-route'
 import { useEditorStore } from '#/lib/editor-store.client'
+import { AgentStatus } from './agent-status'
 import { MimirMark, formatFileSize, relativeTime } from './ui'
+
+const claims = [
+  { icon: LockIcon, text: 'your pdfs never leave this browser' },
+  { icon: ZapIcon, text: 'opens instantly, works offline' },
+  { icon: BotIcon, text: 'Agent Ready over WebMCP' },
+]
+
+function Tagline() {
+  return (
+    <>
+      where <s>gods</s> humans and ai study together
+    </>
+  )
+}
 
 export function LibraryView() {
   const navigate = useNavigate()
@@ -28,6 +44,7 @@ export function LibraryView() {
   const status = useEditorStore((state) => state.status)
   const storeError = useEditorStore((state) => state.error)
   const inputRef = useRef<HTMLInputElement>(null)
+  const zoneIconRef = useRef<AnimatedIconHandle>(null)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [storage, setStorage] = useState<{ usage?: number; quota?: number } | null>(null)
@@ -54,30 +71,35 @@ export function LibraryView() {
   }
 
   const storagePercent = storage?.quota && storage.usage ? Math.round((storage.usage / storage.quota) * 100) : null
+  const dropHandlers = {
+    onPointerEnter: () => zoneIconRef.current?.startAnimation(),
+    onPointerLeave: () => zoneIconRef.current?.stopAnimation(),
+    onDragEnter: (event: React.DragEvent) => {
+      event.preventDefault()
+      setDragging(true)
+      zoneIconRef.current?.startAnimation()
+    },
+    onDragOver: (event: React.DragEvent) => event.preventDefault(),
+    onDragLeave: (event: React.DragEvent) => {
+      if (event.currentTarget.contains(event.relatedTarget as Node)) return
+      setDragging(false)
+      zoneIconRef.current?.stopAnimation()
+    },
+    onDrop: (event: React.DragEvent) => {
+      event.preventDefault()
+      setDragging(false)
+      zoneIconRef.current?.stopAnimation()
+      void ingest(event.dataTransfer.files[0])
+    },
+  }
 
   return (
     <Tooltip.Provider>
       <main className="library-shell">
         <header className="library-header">
           <MimirMark />
-          <div className="privacy-pill">
-            <ShieldCheck size={15} aria-hidden="true" />
-            Private by default
-          </div>
+          <AgentStatus documentId={null} variant="library" />
         </header>
-
-        <section className="library-intro" aria-labelledby="library-title">
-          <div>
-            <h1 id="library-title">Read closely.</h1>
-            <p>Your papers, notes, and marks stay in this browser.</p>
-          </div>
-          {documents.length > 0 && (
-            <button className="primary-button" type="button" onClick={() => inputRef.current?.click()}>
-              <Plus size={17} />
-              Add PDF
-            </button>
-          )}
-        </section>
 
         <input
           ref={inputRef}
@@ -91,36 +113,57 @@ export function LibraryView() {
         />
 
         {documents.length === 0 ? (
-          <button
-            type="button"
-            className={`drop-zone drop-zone-empty ${dragging ? 'is-dragging' : ''}`}
-            onClick={() => inputRef.current?.click()}
-            onDragEnter={(event) => {
-              event.preventDefault()
-              setDragging(true)
-            }}
-            onDragOver={(event) => event.preventDefault()}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false)
-            }}
-            onDrop={(event) => {
-              event.preventDefault()
-              setDragging(false)
-              void ingest(event.dataTransfer.files[0])
-            }}
-          >
-            <span className="upload-orbit" aria-hidden="true">
-              <FileText size={29} />
-              <span><UploadCloud size={17} /></span>
-            </span>
-            <strong>{status === 'loading' ? 'Opening your PDF…' : 'Drop a PDF to begin'}</strong>
-            <span>or choose a file from your computer</span>
-            <small>PDFs are processed locally and never uploaded.</small>
-          </button>
+          <>
+            <section className="hero">
+              <img className="hero-mark" src="/mimir-logo.png" alt="" width={88} height={88} />
+              <h1>
+                <Tagline />
+              </h1>
+              <p>
+                A pdf workspace that runs entirely on your machine. Read closely, mark it up, and let
+                your agent work the same page you are on.
+              </p>
+            </section>
+
+            <button
+              type="button"
+              className={`drop-zone drop-zone-empty ${dragging ? 'is-dragging' : ''}`}
+              onClick={() => inputRef.current?.click()}
+              {...dropHandlers}
+            >
+              <span className="upload-orbit" aria-hidden="true">
+                <FileTextIcon ref={zoneIconRef} size={26} />
+              </span>
+              <strong>{status === 'loading' ? 'opening your pdf…' : 'drop a pdf to begin'}</strong>
+              <span>or choose one from your computer</span>
+            </button>
+
+            <div className="hero-claims">
+              {claims.map(({ icon: Icon, text }) => (
+                <span className="claim" key={text}>
+                  <Icon size={14} />
+                  {text}
+                </span>
+              ))}
+            </div>
+          </>
         ) : (
-          <section className="document-library" aria-labelledby="recent-title">
+          <section className="document-library" aria-labelledby="library-title">
+            <div className="library-intro">
+              <div>
+                <h1 id="library-title">
+                  <Tagline />
+                </h1>
+                <p>Everything below lives in this browser, ready the moment you open it.</p>
+              </div>
+              <button className="primary-button" type="button" onClick={() => inputRef.current?.click()}>
+                <PlusIcon size={16} />
+                Add PDF
+              </button>
+            </div>
+
             <div className="section-heading">
-              <h2 id="recent-title">Recent documents</h2>
+              <h2>Recent documents</h2>
               <span>{documents.length} stored locally</span>
             </div>
             <div className="document-list">
@@ -145,18 +188,18 @@ export function LibraryView() {
                         <i><b style={{ width: `${progress}%` }} /></i>
                       </span>
                       <span className="document-updated">{relativeTime(record.lastOpenedAt)}</span>
-                      <ArrowRight className="row-arrow" size={18} aria-hidden="true" />
+                      <ArrowRightIcon className="row-arrow" size={17} />
                     </button>
                     <DropdownMenu.Root>
                       <DropdownMenu.Trigger asChild>
                         <button className="row-menu" type="button" aria-label={`More options for ${record.name}`}>
-                          <MoreHorizontal size={18} />
+                          <MoreIcon size={17} />
                         </button>
                       </DropdownMenu.Trigger>
                       <DropdownMenu.Portal>
                         <DropdownMenu.Content className="menu-content" align="end" sideOffset={7}>
                           <DropdownMenu.Item className="menu-item" onSelect={() => void openRecord(record)}>
-                            <FolderOpen size={15} /> Open document
+                            <FolderOpenIcon size={15} /> Open document
                           </DropdownMenu.Item>
                           <DropdownMenu.Separator className="menu-separator" />
                           <DropdownMenu.Item
@@ -165,7 +208,7 @@ export function LibraryView() {
                               if (window.confirm(`Remove “${record.name}” and its local annotations?`)) void deleteDocument(record.id)
                             }}
                           >
-                            <Trash2 size={15} /> Remove locally
+                            <TrashIcon size={15} /> Remove
                           </DropdownMenu.Item>
                         </DropdownMenu.Content>
                       </DropdownMenu.Portal>
@@ -178,19 +221,9 @@ export function LibraryView() {
               type="button"
               className={`drop-zone drop-zone-compact ${dragging ? 'is-dragging' : ''}`}
               onClick={() => inputRef.current?.click()}
-              onDragEnter={(event) => {
-                event.preventDefault()
-                setDragging(true)
-              }}
-              onDragOver={(event) => event.preventDefault()}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault()
-                setDragging(false)
-                void ingest(event.dataTransfer.files[0])
-              }}
+              {...dropHandlers}
             >
-              <UploadCloud size={18} />
+              <UploadIcon ref={zoneIconRef} size={17} />
               Drop another PDF here
             </button>
           </section>
@@ -198,12 +231,11 @@ export function LibraryView() {
 
         {(error || storeError) && <div className="error-banner" role="alert">{error || storeError}</div>}
 
-        <footer className="library-footer">
-          <span><CheckCircle2 size={14} /> Autosaved on this device</span>
-          {storagePercent !== null && (
-            <span><HardDrive size={14} /> Browser storage {storagePercent}% used</span>
-          )}
-        </footer>
+        {storagePercent !== null && storagePercent >= 60 && (
+          <footer className="library-footer">
+            This browser is {storagePercent}% full — remove a document to make room.
+          </footer>
+        )}
       </main>
     </Tooltip.Provider>
   )

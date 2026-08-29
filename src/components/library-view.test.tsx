@@ -14,11 +14,11 @@ describe('local document library', () => {
 
   afterEach(cleanup)
 
-  it('teaches the private local-first upload workflow on first run', async () => {
+  it('teaches the local-first upload workflow on first run', async () => {
     render(<LibraryView />)
-    expect(screen.getByRole('heading', { name: 'Read closely.' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /where gods humans and ai study together/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /drop a pdf to begin/i })).toBeTruthy()
-    expect(screen.getByText(/processed locally and never uploaded/i)).toBeTruthy()
+    expect(screen.getByText(/never leave this browser/i)).toBeTruthy()
     await waitFor(() => expect(editorStore.getState().documents).toHaveLength(0))
   })
 })

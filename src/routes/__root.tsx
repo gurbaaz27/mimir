@@ -12,22 +12,33 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'Mimir — Read closely',
+        title: 'mimir — where humans and ai study together',
       },
       {
         name: 'description',
         content:
-          'A private, local-first PDF workspace for focused reading and precise annotation.',
+          'A local-first PDF workspace for close reading and precise annotation, with your documents and marks exposed to browser agents over WebMCP.',
       },
       {
         name: 'theme-color',
-        content: '#f3f7f6',
+        content: '#ffffff',
       },
     ],
     links: [
       {
         rel: 'icon',
         href: '/favicon.ico',
+      },
+      {
+        rel: 'apple-touch-icon',
+        href: '/mimir-logo.png',
+      },
+      {
+        rel: 'preload',
+        href: '/fonts/OverusedGrotesk-VF.woff2',
+        as: 'font',
+        type: 'font/woff2',
+        crossOrigin: 'anonymous',
       },
       {
         rel: 'stylesheet',

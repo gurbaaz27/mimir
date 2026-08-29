@@ -1,33 +1,34 @@
-import {
-  ArrowUpRight,
-  Circle,
-  Highlighter,
-  MousePointer2,
-  Move,
-  Pencil,
-  RectangleHorizontal,
-  StickyNote,
-  Strikethrough,
-  TextCursorInput,
-  Underline,
-} from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
+import {
+  ArrowUpRightIcon,
+  EllipseIcon,
+  HandIcon,
+  HighlighterIcon,
+  NoteIcon,
+  PencilIcon,
+  PointerIcon,
+  RectangleIcon,
+  StrikethroughIcon,
+  TextBoxIcon,
+  UnderlineIcon,
+  type AnimatedIcon,
+} from '#/components/icons'
 import { annotationColors } from '#/lib/annotations'
 import { useEditorStore, type EditorTool } from '#/lib/editor-store.client'
 import { IconButton } from './ui'
 
-const tools: Array<{ tool: EditorTool; label: string; shortcut: string; icon: typeof MousePointer2 }> = [
-  { tool: 'select', label: 'Select', shortcut: 'V', icon: MousePointer2 },
-  { tool: 'pan', label: 'Pan', shortcut: 'Space', icon: Move },
-  { tool: 'highlight', label: 'Highlight', shortcut: 'H', icon: Highlighter },
-  { tool: 'underline', label: 'Underline', shortcut: 'U', icon: Underline },
-  { tool: 'strikeout', label: 'Strike out', shortcut: '⇧S', icon: Strikethrough },
-  { tool: 'ink', label: 'Draw', shortcut: 'D', icon: Pencil },
-  { tool: 'text', label: 'Text box', shortcut: 'T', icon: TextCursorInput },
-  { tool: 'note', label: 'Note', shortcut: 'N', icon: StickyNote },
-  { tool: 'rectangle', label: 'Rectangle', shortcut: 'R', icon: RectangleHorizontal },
-  { tool: 'ellipse', label: 'Ellipse', shortcut: 'E', icon: Circle },
-  { tool: 'arrow', label: 'Arrow', shortcut: 'A', icon: ArrowUpRight },
+const tools: Array<{ tool: EditorTool; label: string; shortcut: string; icon: AnimatedIcon }> = [
+  { tool: 'select', label: 'Select', shortcut: 'Esc', icon: PointerIcon },
+  { tool: 'pan', label: 'Pan', shortcut: 'Space', icon: HandIcon },
+  { tool: 'highlight', label: 'Highlight', shortcut: 'H', icon: HighlighterIcon },
+  { tool: 'underline', label: 'Underline', shortcut: 'U', icon: UnderlineIcon },
+  { tool: 'strikeout', label: 'Strike Out', shortcut: '⇧S', icon: StrikethroughIcon },
+  { tool: 'ink', label: 'Draw', shortcut: 'D', icon: PencilIcon },
+  { tool: 'text', label: 'Text Box', shortcut: 'T', icon: TextBoxIcon },
+  { tool: 'note', label: 'Note', shortcut: 'N', icon: NoteIcon },
+  { tool: 'rectangle', label: 'Rectangle', shortcut: 'R', icon: RectangleIcon },
+  { tool: 'ellipse', label: 'Ellipse', shortcut: 'E', icon: EllipseIcon },
+  { tool: 'arrow', label: 'Arrow', shortcut: 'A', icon: ArrowUpRightIcon },
 ]
 
 export function AnnotationToolbar() {
@@ -38,11 +39,15 @@ export function AnnotationToolbar() {
 
   return (
     <div className="annotation-toolbar" role="toolbar" aria-label="Annotation tools">
-      {tools.map(({ tool, label, shortcut, icon: Icon }, index) => (
+      {tools.map(({ tool, label, shortcut, icon }, index) => (
         <span className={index === 2 || index === 5 || index === 8 ? 'tool-group-start' : ''} key={tool}>
-          <IconButton label={label} shortcut={shortcut} active={activeTool === tool} onClick={() => setTool(tool)}>
-            <Icon size={17} strokeWidth={1.8} />
-          </IconButton>
+          <IconButton
+            label={label}
+            shortcut={shortcut}
+            icon={icon}
+            active={activeTool === tool}
+            onClick={() => setTool(tool)}
+          />
         </span>
       ))}
       <DropdownMenu.Root>

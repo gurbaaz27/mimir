@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { LoaderCircle, Search, X } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
+import { SearchIcon, XIcon } from '#/components/icons'
 import { useEditorStore } from '#/lib/editor-store.client'
 import { searchDocumentText, type SearchResult } from '#/lib/search.client'
 
@@ -30,9 +31,9 @@ export function SearchPanel() {
   return (
     <div className="search-panel" role="search">
       <div className="search-input-wrap">
-        {searching ? <LoaderCircle className="spin" size={16} /> : <Search size={16} />}
+        {searching ? <LoaderCircle className="spin" size={16} /> : <SearchIcon size={16} />}
         <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this PDF" aria-label="Search this PDF" />
-        {query && <button type="button" aria-label="Clear search" onClick={() => setQuery('')}><X size={14} /></button>}
+        {query && <button type="button" aria-label="Clear search" onClick={() => setQuery('')}><XIcon size={14} /></button>}
       </div>
       <button type="button" className="search-done" onClick={() => setOpen(false)}>Done</button>
       {query && (
