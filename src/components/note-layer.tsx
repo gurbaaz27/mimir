@@ -42,6 +42,7 @@ function StickyNote({
   const [collapsed, setCollapsed] = useState(annotation.resolved)
   const [dragPoint, setDragPoint] = useState<Point | null>(null)
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
+  const suppressClickRef = useRef(false)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => setBody(annotation.body), [annotation.body])
@@ -66,6 +67,7 @@ function StickyNote({
 
   const handleDragStart = (event: PointerEvent<HTMLElement>) => {
     event.stopPropagation()
+    suppressClickRef.current = false
     select()
     event.currentTarget.setPointerCapture(event.pointerId)
     dragRef.current = { x: event.clientX, y: event.clientY, moved: false }
@@ -78,6 +80,7 @@ function StickyNote({
     const dy = event.clientY - drag.y
     if (!drag.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
     drag.moved = true
+    suppressClickRef.current = true
     setDragPoint({
       x: clamp(annotation.point.x + dx / pageWidth, 0, 1),
       y: clamp(annotation.point.y + dy / pageHeight, 0, 1),
@@ -110,7 +113,15 @@ function StickyNote({
         } as React.CSSProperties}
         title={annotation.body || 'Empty note'}
         aria-label={`Open note: ${annotation.body || 'empty note'}`}
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDragMove}
+        onPointerUp={handleDragEnd}
+        onPointerCancel={handleDragEnd}
         onClick={() => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false
+            return
+          }
           setCollapsed(false)
           select()
         }}

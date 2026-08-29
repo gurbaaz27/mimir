@@ -407,7 +407,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .selection-bar .icon-button.is-danger:hover { background: oklch(0.96 0.02 28); }
 
 /* ─────────────────────────  PDF surface  ───────────────────────── */
-.pdf-page { position: relative; flex: 0 0 auto; overflow: visible; background: var(--paper); box-shadow: var(--page-shadow); transform-origin: top center; transition: 160ms ease-out; }
+.pdf-page { position: relative; flex: 0 0 auto; margin-top: 56px; overflow: visible; background: var(--paper); box-shadow: var(--page-shadow); transform-origin: top center; transition: 160ms ease-out; }
 .pdf-page > canvas { position: absolute; inset: 0; display: block; }
 .pdf-page > .textLayer { position: absolute; z-index: 2; inset: 0; overflow: hidden; line-height: 1; text-size-adjust: none; transform-origin: 0 0; }
 .pdf-page > .textLayer span { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0 0; }
@@ -445,7 +445,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .sticky-note-body { width: 100%; min-height: 0; flex: 1; padding: 6px 8px 12px; border: 0; color: oklch(0.24 0.025 75); background: transparent; font: 500 11px/1.42 var(--font-sans); resize: none; overflow-wrap: anywhere; }
 .sticky-note-body:focus { outline: none; }
 .sticky-note-body::placeholder { color: oklch(0.35 0.02 75 / .5); }
-.sticky-pin { position: absolute; display: grid; padding: 4px 3px; place-content: center start; gap: 3px; border: 0; border-radius: 2px 2px 5px 2px; transform-origin: top left; background: color-mix(in oklab, var(--note-color) 62%, white); box-shadow: inset 0 0 0 1px oklch(0.3 0.05 75 / .18), 0 1px 1px oklch(0.3 0.05 75 / .2), 0 4px 8px oklch(0.3 0.05 75 / .18); }
+.sticky-pin { position: absolute; display: grid; padding: 4px 3px; place-content: center start; gap: 3px; border: 0; border-radius: 2px 2px 5px 2px; transform-origin: top left; background: color-mix(in oklab, var(--note-color) 62%, white); cursor: grab; box-shadow: inset 0 0 0 1px oklch(0.3 0.05 75 / .18), 0 1px 1px oklch(0.3 0.05 75 / .2), 0 4px 8px oklch(0.3 0.05 75 / .18); }
 .sticky-pin span { display: block; width: 14px; height: 1px; background: oklch(0.28 0.03 75 / .55); }
 .sticky-pin span:last-child { width: 9px; }
 .sticky-pin:hover { filter: brightness(1.04); }
