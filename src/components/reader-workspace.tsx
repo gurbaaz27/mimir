@@ -24,7 +24,7 @@ import { DocumentSidebar } from './document-sidebar'
 import { PdfViewer } from './pdf-viewer'
 import { SearchPanel } from './search-panel'
 import { SelectionBar } from './selection-bar'
-import { IconButton, MimirMark } from './ui'
+import { IconButton, MimirMark, documentLabel } from './ui'
 
 export function ReaderWorkspace() {
   const navigate = useNavigate()
@@ -237,7 +237,7 @@ export function ReaderWorkspace() {
             <IconButton label="Back to library" icon={ArrowLeftIcon} onClick={() => void goToLibrary()} />
             <MimirMark compact />
             <div className="document-title">
-              <strong>{activeDocument.title || activeDocument.name || 'Untitled PDF'}</strong>
+              <strong>{documentLabel(activeDocument)}</strong>
             </div>
           </div>
           <div className="reader-navigation">
@@ -284,7 +284,7 @@ export function ReaderWorkspace() {
           {!sidebarOpen && (
             <button className="open-panel" type="button" aria-label="Open document navigation" onClick={() => setSidebarOpen(true)}><PanelLeftOpenIcon size={17} /></button>
           )}
-          {pdf && sidebarOpen && <DocumentSidebar pdf={pdf} />}
+          {pdf && <DocumentSidebar pdf={pdf} open={sidebarOpen} />}
           <section className="viewer-stage" aria-label="PDF reader">
             {pdf ? (
               <PdfViewer pdf={pdf} pageCount={activeDocument.pageCount} zoom={zoom} rotation={rotation} annotations={annotations} />

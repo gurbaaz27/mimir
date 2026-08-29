@@ -55,6 +55,14 @@ export function IconButton({ label, icon: Icon, size = 17, shortcut, active, cla
   )
 }
 
+/**
+ * A document is named by its metadata title, falling back to the file name
+ * without its extension — never a bare "report.pdf" in the middle of a sentence.
+ */
+export function documentLabel(record: { title?: string; name?: string }) {
+  return record.title?.trim() || record.name?.replace(/\.pdf$/i, '').trim() || 'Untitled PDF'
+}
+
 export function formatFileSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
   return `${(bytes / (1024 * 1024)).toFixed(bytes > 10 * 1024 * 1024 ? 0 : 1)} MB`

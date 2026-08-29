@@ -37,42 +37,47 @@ export function AnnotationToolbar() {
   const color = useEditorStore((state) => state.color)
   const setColor = useEditorStore((state) => state.setColor)
 
+  const activeColor = annotationColors.find((item) => item.value === color)
+
   return (
-    <div className="annotation-toolbar" role="toolbar" aria-label="Annotation tools">
-      {tools.map(({ tool, label, shortcut, icon }, index) => (
-        <span className={index === 2 || index === 5 || index === 8 ? 'tool-group-start' : ''} key={tool}>
-          <IconButton
-            label={label}
-            shortcut={shortcut}
-            icon={icon}
-            active={activeTool === tool}
-            onClick={() => setTool(tool)}
-          />
-        </span>
-      ))}
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className="color-trigger" type="button" aria-label="Annotation color">
-            <span style={{ background: color }} />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="color-menu" align="end" sideOffset={8}>
-            <span>Annotation color</span>
-            <div>
-              {annotationColors.map((item) => (
-                <DropdownMenu.Item
-                  key={item.value}
-                  className={`color-option ${color === item.value ? 'is-active' : ''}`}
-                  aria-label={item.name}
-                  onSelect={() => setColor(item.value)}
-                  style={{ '--swatch': item.value } as React.CSSProperties}
-                />
-              ))}
-            </div>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+    <div className="annotation-toolbar">
+      <div className="tool-tray" role="toolbar" aria-label="Annotation tools">
+        {tools.map(({ tool, label, shortcut, icon }, index) => (
+          <span className={index === 2 || index === 5 || index === 8 ? 'tool-group-start' : ''} key={tool}>
+            <IconButton
+              label={label}
+              shortcut={shortcut}
+              icon={icon}
+              active={activeTool === tool}
+              onClick={() => setTool(tool)}
+            />
+          </span>
+        ))}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button className="color-trigger" type="button" aria-label={`Annotation color: ${activeColor?.name ?? 'custom'}`}>
+              <span style={{ background: color }} />
+              {activeColor?.name ?? 'Color'}
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content className="color-menu" align="end" sideOffset={8}>
+              <span>Annotation color</span>
+              <div>
+                {annotationColors.map((item) => (
+                  <DropdownMenu.Item
+                    key={item.value}
+                    className={`color-option ${color === item.value ? 'is-active' : ''}`}
+                    aria-label={item.name}
+                    onSelect={() => setColor(item.value)}
+                    style={{ '--swatch': item.value } as React.CSSProperties}
+                  />
+                ))}
+              </div>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      </div>
     </div>
   )
 }

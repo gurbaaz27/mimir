@@ -41,7 +41,7 @@ function Thumbnail({ pdf, pageNumber, active }: { pdf: PDFDocumentProxy; pageNum
   )
 }
 
-export function DocumentSidebar({ pdf }: { pdf: PDFDocumentProxy }) {
+export function DocumentSidebar({ pdf, open }: { pdf: PDFDocumentProxy; open: boolean }) {
   const currentPage = useEditorStore((state) => state.currentPage)
   const pageCount = useEditorStore((state) => state.activeDocument?.pageCount ?? 0)
   const setSidebarOpen = useEditorStore((state) => state.setSidebarOpen)
@@ -81,7 +81,7 @@ export function DocumentSidebar({ pdf }: { pdf: PDFDocumentProxy }) {
   }, [currentPage, tab, virtualizer])
 
   return (
-    <aside className="document-sidebar" aria-label="Document navigation">
+    <aside className="document-sidebar" aria-label="Document navigation" inert={!open}>
       <div className="sidebar-header">
         <div className="sidebar-tabs" role="tablist" aria-label="Navigation view">
           <button type="button" role="tab" aria-selected={tab === 'pages'} onClick={() => setTab('pages')}>

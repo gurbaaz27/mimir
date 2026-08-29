@@ -18,7 +18,7 @@ import { getStorageEstimate } from '#/lib/db.client'
 import { getDocumentPathSegment } from '#/lib/document-route'
 import { useEditorStore } from '#/lib/editor-store.client'
 import { AgentStatus } from './agent-status'
-import { MimirMark, formatFileSize, relativeTime } from './ui'
+import { MimirMark, documentLabel, formatFileSize, relativeTime } from './ui'
 
 const claims = [
   { icon: LockIcon, text: 'your pdfs never leave this browser' },
@@ -136,6 +136,7 @@ export function LibraryView() {
               </span>
               <strong>{status === 'loading' ? 'opening your pdf…' : 'drop a pdf to begin'}</strong>
               <span>or choose one from your computer</span>
+              <span className="drop-hint" aria-hidden="true">Nothing uploads. The file stays on this device.</span>
             </button>
 
             <div className="hero-claims">
@@ -163,8 +164,11 @@ export function LibraryView() {
             </div>
 
             <div className="section-heading">
-              <h2>Recent documents</h2>
-              <span>{documents.length} stored locally</span>
+              <h2>Your library</h2>
+              <i aria-hidden="true" />
+              <span>
+                {documents.length} {documents.length === 1 ? 'document' : 'documents'} stored locally
+              </span>
             </div>
             <div className="document-list">
               {documents.map((record) => {
@@ -177,14 +181,16 @@ export function LibraryView() {
                         <i style={{ height: `${progress}%` }} />
                       </span>
                       <span className="document-main">
-                        <strong>{record.title || record.name.replace(/\.pdf$/i, '')}</strong>
+                        <strong>{documentLabel(record)}</strong>
                         <span>
                           {record.author && <>{record.author}<b>·</b></>}
                           {record.pageCount} pages <b>·</b> {formatFileSize(record.size)}
                         </span>
                       </span>
                       <span className="document-progress">
-                        <span>Page {record.lastPage}</span>
+                        <span>
+                          Page {record.lastPage} <b>of {record.pageCount}</b>
+                        </span>
                         <i><b style={{ width: `${progress}%` }} /></i>
                       </span>
                       <span className="document-updated">{relativeTime(record.lastOpenedAt)}</span>
@@ -223,9 +229,23 @@ export function LibraryView() {
               onClick={() => inputRef.current?.click()}
               {...dropHandlers}
             >
-              <UploadIcon ref={zoneIconRef} size={17} />
-              Drop another PDF here
+              <span className="drop-tile" aria-hidden="true">
+                <UploadIcon ref={zoneIconRef} size={18} />
+              </span>
+              <span className="drop-copy">
+                <strong>{dragging ? 'Release to add it' : 'Drop another PDF here'}</strong>
+                <span>or click to browse your computer</span>
+              </span>
             </button>
+
+            <ul className="library-claims">
+              {claims.map(({ icon: Icon, text }) => (
+                <li key={text}>
+                  <Icon size={13} />
+                  {text}
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 
