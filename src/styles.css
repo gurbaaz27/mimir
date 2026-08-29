@@ -345,14 +345,35 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .agent-status.available i { background: var(--moss); box-shadow: 0 0 0 3px oklch(0.52 0.075 155 / .16); }
 
 .annotation-toolbar { position: absolute; z-index: 20; top: 54px; right: 0; left: 0; display: flex; min-height: 66px; align-items: center; justify-content: center; padding: 0 12px; pointer-events: none; }
-.tool-tray { display: flex; align-items: center; gap: 2px; padding: 4px 5px; border-radius: 14px; background: var(--paper); box-shadow: inset 0 0 0 1px oklch(0.2 0.005 60 / .06), inset 0 1px 0 var(--paper), 0 1px 2px oklch(0.25 0.02 70 / .1), 0 6px 16px oklch(0.28 0.03 70 / .12); pointer-events: auto; }
+.tool-tray { display: flex; align-items: center; gap: 2px; padding: 4px 5px; border-radius: 14px; background: var(--paper); box-shadow: inset 0 0 0 1px oklch(0.2 0.005 60 / .06), inset 0 1px 0 var(--paper), 0 1px 2px oklch(0.25 0.02 70 / .1), 0 6px 16px oklch(0.28 0.03 70 / .12); pointer-events: auto; transform: translate(var(--toolbar-offset-x, 0), var(--toolbar-offset-y, 0)); }
+.tool-tray.is-dragging { cursor: grabbing; user-select: none; }
+.toolbar-drag-handle { display: grid; width: 22px; height: 30px; flex: 0 0 auto; margin-right: 2px; padding: 0; place-items: center; border: 0; border-right: 1px solid var(--line); border-radius: 7px; color: var(--faint); background: transparent; cursor: grab; touch-action: none; transition: background 150ms ease-out, color 150ms ease-out; }
+.toolbar-drag-handle:hover { color: var(--ink-soft); background: var(--surface); }
+.toolbar-drag-handle:active, .tool-tray.is-dragging .toolbar-drag-handle { cursor: grabbing; }
+.toolbar-drag-dots { display: grid; gap: 3px; }
+.toolbar-drag-dots i { display: block; width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+.toolbar-orientation-toggle { display: grid; width: 26px; height: 30px; flex: 0 0 auto; padding: 0; place-items: center; border: 0; border-radius: 7px; color: var(--faint); background: transparent; cursor: pointer; transition: background 150ms ease-out, color 150ms ease-out, transform 130ms var(--spring); }
+.toolbar-orientation-toggle:hover { color: var(--ink-soft); background: var(--surface); }
+.toolbar-orientation-toggle:active { transform: scale(.92); }
+.toolbar-orientation-glyph { display: flex; width: 13px; height: 13px; gap: 2px; align-items: center; justify-content: center; }
+.toolbar-orientation-glyph.is-horizontal { flex-direction: column; }
+.toolbar-orientation-glyph.is-horizontal i { width: 13px; height: 2px; }
+.toolbar-orientation-glyph.is-vertical i { width: 2px; height: 13px; }
+.toolbar-orientation-glyph i { display: block; border-radius: 999px; background: currentColor; }
+.tool-tray.is-vertical { flex-direction: column; align-items: stretch; }
+.tool-tray.is-vertical .toolbar-drag-handle { width: 30px; height: 22px; margin: 0 0 2px; border-right: 0; border-bottom: 1px solid var(--line); }
+.tool-tray.is-vertical .toolbar-drag-dots { display: flex; gap: 3px; }
+.tool-tray.is-vertical .toolbar-orientation-toggle { width: 30px; height: 26px; }
+.tool-tray.is-vertical .tool-group-start { margin: 9px 0 0; padding: 9px 0 0; border-top: 1px solid var(--line); border-left: 0; }
+.tool-tray.is-vertical .color-trigger { width: 30px; justify-content: center; margin: 9px 0 0; padding: 0; }
+.tool-tray.is-vertical .color-label { display: none; }
 .tool-tray > span { display: inline-flex; }
 .tool-tray .tool-group-start { margin-left: 9px; padding-left: 9px; border-left: 1px solid var(--line); }
 .tool-tray .icon-button.is-active { box-shadow: 0 1px 2px oklch(0.2 0.01 60 / .3); }
 .color-trigger { display: inline-flex; height: 30px; align-items: center; gap: 7px; margin-left: 9px; padding: 0 11px 0 8px; border: 0; border-radius: 9px; color: var(--ink-soft); background: var(--sunken); font-size: 11px; font-weight: 520; letter-spacing: -.005em; transition: background 150ms ease-out, color 150ms ease-out, transform 130ms var(--spring); }
 .color-trigger:hover { color: var(--ink); background: oklch(0.94 0.007 85); }
 .color-trigger:active { transform: scale(.94); }
-.color-trigger span { width: 14px; height: 14px; flex: 0 0 auto; border: 2px solid var(--paper); border-radius: 50%; box-shadow: 0 0 0 1px var(--line-strong); }
+.color-trigger .color-swatch { width: 14px; height: 14px; flex: 0 0 auto; border: 2px solid var(--paper); border-radius: 50%; box-shadow: 0 0 0 1px var(--line-strong); }
 .color-menu { min-width: 190px; padding: 11px; }
 .color-menu > span { display: block; margin-bottom: 9px; color: var(--muted); font-size: 10.5px; }
 .color-menu > div { display: flex; gap: 9px; }
