@@ -27,7 +27,7 @@ export function SelectionBar() {
     <Tooltip.Provider>
       <div className="selection-bar" role="group" aria-label="Selected annotation">
         <span>
-          <b>{titleCase(annotation)}</b> · page {annotation.pageNumber}
+          <b>{titleCase(annotation)}</b>
         </span>
         <div className="selection-swatches">
           {annotationColors.map((item) => (
