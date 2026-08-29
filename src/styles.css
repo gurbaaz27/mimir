@@ -184,9 +184,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .reader-identity { gap: 7px; }
 .reader-identity .brand-mark { width: 26px; height: 26px; border-radius: 7px; }
 .document-title { min-width: 0; margin-left: 2px; }
-.document-title strong, .document-title span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.document-title strong { max-width: 250px; font-size: 12.5px; font-weight: 560; letter-spacing: -.01em; }
-.document-title span { max-width: 230px; margin-top: 1px; color: var(--faint); font-size: 10px; }
+.document-title strong { display: block; max-width: 360px; overflow: hidden; font-family: var(--font-display); font-size: 18px; font-weight: 620; letter-spacing: -.03em; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
 .reader-navigation { justify-content: center; gap: 3px; }
 .reader-navigation label { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .reader-navigation label input { width: 40px; height: 29px; padding: 0; border: 1px solid var(--line); border-radius: 8px; text-align: center; color: var(--ink); background: var(--surface); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -382,7 +380,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 @media (max-width: 1100px) {
   .reader-topbar { grid-template-columns: minmax(190px,1fr) auto minmax(190px,1fr); }
   .agent-status.reader { width: 30px; padding: 0; justify-content: center; font-size: 0; gap: 0; }
-  .document-title strong { max-width: 160px; }
+  .document-title strong { max-width: 160px; font-size: 16px; }
   .reader-body.has-sidebar { grid-template-columns: 196px minmax(0,1fr); }
   .annotation-toolbar .icon-button { width: 32px; }
 }
@@ -394,7 +392,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   .document-progress { display: none; }
   .reader-topbar { grid-template-columns: minmax(0,1fr) auto; }
   .reader-navigation { display: none; }
-  .document-title span { display: none; }
   .reader-body.has-sidebar { grid-template-columns: minmax(0,1fr); }
   .document-sidebar { position: absolute; z-index: 12; top: 0; bottom: 0; left: 0; width: min(290px,82vw); box-shadow: var(--menu-shadow); }
   .annotation-toolbar { justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
@@ -413,7 +410,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   .document-updated { display: none; }
   .reader-actions .icon-button:nth-of-type(2), .reader-actions .icon-button:nth-of-type(3), .reader-actions .icon-button:nth-of-type(4), .reader-actions .icon-button:nth-of-type(5) { display: none; }
   .reader-actions .export-button { width: 34px; padding: 0; font-size: 0; }
-  .document-title strong { max-width: 120px; }
+  .document-title strong { max-width: 120px; font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

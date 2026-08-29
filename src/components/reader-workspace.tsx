@@ -237,8 +237,7 @@ export function ReaderWorkspace() {
             <IconButton label="Back to library" icon={ArrowLeftIcon} onClick={() => void goToLibrary()} />
             <MimirMark compact />
             <div className="document-title">
-              <strong>{activeDocument.title || activeDocument.name.replace(/\.pdf$/i, '')}</strong>
-              <span>{activeDocument.name}</span>
+              <strong>{activeDocument.title || activeDocument.name || 'Untitled PDF'}</strong>
             </div>
           </div>
           <div className="reader-navigation">
