@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { editorStore } from '#/lib/editor-store.client'
 import type { Annotation } from '#/lib/annotations'
 import { AnnotationOverlay } from './annotation-overlay'
@@ -97,5 +97,98 @@ describe('resize handle hit targets', () => {
       'Move the start of the arrow',
       'Move the end of the arrow',
     ])
+  })
+})
+
+/** A pointer event carrying the fields the resize code reads. */
+function pointerEvent(type: string, clientX: number, clientY: number) {
+  return Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+    pointerId: 1,
+    button: 0,
+    clientX,
+    clientY,
+    shiftKey: false,
+  })
+}
+
+describe('dragging a resize handle', () => {
+  afterEach(cleanup)
+
+  function mount() {
+    const update = vi.fn().mockResolvedValue(undefined)
+    editorStore.setState({
+      tool: 'select',
+      selectedAnnotationId: 'a1',
+      selectedAnnotationIds: ['a1'],
+      annotationDrag: null,
+      updateAnnotation: update,
+    } as never)
+    const annotation = shape({ shape: 'rectangle', bounds: { x: 0.1, y: 0.1, width: 0.5, height: 0.4 } })
+    const view = render(
+      <AnnotationOverlay
+        pageNumber={1}
+        annotations={[annotation]}
+        pageWidth={PAGE_WIDTH}
+        pageHeight={PAGE_HEIGHT}
+      />,
+    )
+    // jsdom gives every element a zero-sized box; the overlay maps pointer
+    // positions through it, so give it the page's real size.
+    const svg = view.container.querySelector('svg')!
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: PAGE_WIDTH, height: PAGE_HEIGHT }) as DOMRect
+    const grip = (label: string) =>
+      view.container.querySelector(`[aria-label="Resize rectangle from the ${label}"]`)!
+    const lit = () =>
+      [...view.container.querySelectorAll('.annotation-resize-handle.is-resizing')].map(
+        (node) => node.querySelector('[aria-label]')?.getAttribute('aria-label'),
+      )
+    return { grip, lit, update }
+  }
+
+  it('lights only the handle under the pointer and releases it on pointerup', () => {
+    const { grip, lit } = mount()
+
+    fireEvent(grip('right'), pointerEvent('pointerdown', 0.6 * PAGE_WIDTH, 0.3 * PAGE_HEIGHT))
+    expect(lit()).toEqual(['Resize rectangle from the right'])
+
+    act(() => {
+      window.dispatchEvent(pointerEvent('pointermove', 0.8 * PAGE_WIDTH, 0.9 * PAGE_HEIGHT))
+    })
+    // Still the right handle, even though the pointer has wandered down beside
+    // the bottom one — this is what used to hand the highlight to a neighbour.
+    expect(lit()).toEqual(['Resize rectangle from the right'])
+
+    act(() => {
+      window.dispatchEvent(pointerEvent('pointerup', 0.8 * PAGE_WIDTH, 0.9 * PAGE_HEIGHT))
+    })
+    expect(lit()).toEqual([])
+  })
+
+  it('does not strand the drag when the pointer is released off the page', () => {
+    const { grip, lit } = mount()
+
+    fireEvent(grip('right'), pointerEvent('pointerdown', 0.6 * PAGE_WIDTH, 0.3 * PAGE_HEIGHT))
+    act(() => {
+      window.dispatchEvent(pointerEvent('pointerup', -400, -400))
+    })
+
+    expect(lit()).toEqual([])
+  })
+
+  it('resizes only the axis its handle owns', () => {
+    const { grip, update } = mount()
+
+    fireEvent(grip('right'), pointerEvent('pointerdown', 0.6 * PAGE_WIDTH, 0.3 * PAGE_HEIGHT))
+    act(() => {
+      window.dispatchEvent(pointerEvent('pointermove', 0.8 * PAGE_WIDTH, 0.9 * PAGE_HEIGHT))
+      window.dispatchEvent(pointerEvent('pointerup', 0.8 * PAGE_WIDTH, 0.9 * PAGE_HEIGHT))
+    })
+
+    expect(update).toHaveBeenCalledTimes(1)
+    const bounds = update.mock.calls[0]?.[1].bounds
+    expect(bounds.width).toBeCloseTo(0.7)
+    expect(bounds.height).toBeCloseTo(0.4)
+    expect(bounds.y).toBeCloseTo(0.1)
   })
 })

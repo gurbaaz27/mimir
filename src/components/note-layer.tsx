@@ -60,25 +60,10 @@ function useBoxResize({
     next: NormalizedRect
   } | null>(null)
 
-  // The pointer is captured for the whole drag, so Escape is the only way out
-  // that discards it instead of committing it.
-  useEffect(() => {
-    if (!preview) return
-    const cancel = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      resizeRef.current = null
-      setActive(null)
-    }
-    window.addEventListener('keydown', cancel)
-    return () => window.removeEventListener('keydown', cancel)
-  }, [preview])
-
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>, handle: ResizeHandle) => {
     if (event.button !== 0) return
     event.stopPropagation()
     event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
     resizeRef.current = {
       pointerId: event.pointerId,
       handle,
@@ -90,10 +75,9 @@ function useBoxResize({
     setActive({ handle, bounds })
   }
 
-  const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+  const move = (event: globalThis.PointerEvent) => {
     const resize = resizeRef.current
     if (!resize || resize.pointerId !== event.pointerId) return
-    event.stopPropagation()
     event.preventDefault()
     // `resizeBounds` wants the new position of the dragged edge. Offsetting the
     // handle's own starting point keeps the grab offset; offsetting the rect's
@@ -115,18 +99,42 @@ function useBoxResize({
     setActive({ handle: resize.handle, bounds: next })
   }
 
-  const onPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+  const end = (commit: boolean) => {
     const resize = resizeRef.current
-    if (!resize || resize.pointerId !== event.pointerId) return
     resizeRef.current = null
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     setActive(null)
     // A click that never moved must not land an entry on the undo stack.
-    if (event.type === 'pointercancel' || sameRect(resize.next, resize.origin)) return
+    if (!resize || !commit || sameRect(resize.next, resize.origin)) return
     onCommit(resize.next)
   }
 
-  return { preview, activeHandle: active?.handle ?? null, onPointerDown, onPointerMove, onPointerUp }
+  // Tracked on the window, not on a captured element: a missed pointerup would
+  // strand the drag with the preview stuck on screen and the wrong handle lit.
+  const handlersRef = useRef({ move, end })
+  handlersRef.current = { move, end }
+
+  useEffect(() => {
+    if (!active) return
+    const onMove = (event: globalThis.PointerEvent) => handlersRef.current.move(event)
+    const onUp = (event: globalThis.PointerEvent) => handlersRef.current.end(event.type === 'pointerup')
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      handlersRef.current.end(false)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [Boolean(active)])
+
+  return { preview, activeHandle: active?.handle ?? null, onPointerDown }
 }
 
 /** The eight grab points around a box, sized so they never scale with the page zoom. */
@@ -137,8 +145,6 @@ function ResizeHandles({
   scale,
   activeHandle,
   onPointerDown,
-  onPointerMove,
-  onPointerUp,
 }: {
   label: string
   /** Rendered size of the box in CSS pixels, used to drop handles that would collide. */
@@ -149,8 +155,6 @@ function ResizeHandles({
   /** The handle being dragged, so it stays lit wherever the pointer goes. */
   activeHandle: ResizeHandle | null
   onPointerDown: (event: PointerEvent<HTMLButtonElement>, handle: ResizeHandle) => void
-  onPointerMove: (event: PointerEvent<HTMLButtonElement>) => void
-  onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void
 }) {
   const safeScale = Math.max(scale, 0.01)
   const wideEnough = width >= EDGE_HANDLE_MINIMUM_PIXELS
@@ -177,9 +181,6 @@ function ResizeHandles({
             aria-label={`Resize ${label} from the ${handle.label}`}
             style={{ cursor: handle.cursor }}
             onPointerDown={(event) => onPointerDown(event, handle.name)}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
           />
         )
       })}
@@ -404,8 +405,6 @@ function StickyNote({
           scale={zoom}
           activeHandle={resize.activeHandle}
           onPointerDown={resize.onPointerDown}
-          onPointerMove={resize.onPointerMove}
-          onPointerUp={resize.onPointerUp}
         />
       )}
     </div>
@@ -598,8 +597,6 @@ function TextBox({
           scale={1}
           activeHandle={resize.activeHandle}
           onPointerDown={resize.onPointerDown}
-          onPointerMove={resize.onPointerMove}
-          onPointerUp={resize.onPointerUp}
         />
       )}
     </div>

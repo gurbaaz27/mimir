@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+
+type NativePointerEvent = globalThis.PointerEvent
 import type { Annotation, NormalizedRect, Point } from '#/lib/annotations'
 import { annotationBounds, annotationColors, createAnnotationBase } from '#/lib/annotations'
 import {
@@ -59,7 +61,7 @@ type ResizePreview = {
  * wrapping `<g>` is skipped over by hit testing and cannot hold the capture.
  * The visible marker is drawn underneath it and never takes events itself.
  */
-function ResizeHandle({
+function ResizeGrip({
   cursor,
   label,
   round,
@@ -306,7 +308,7 @@ function AnnotationGlyph({
       {showHandles && (
         <g className="annotation-resize-handles">
           {handles.map((handle) => (
-            <ResizeHandle
+            <ResizeGrip
               key={handle.name}
               cursor={handle.cursor}
               label={handle.label}
@@ -420,20 +422,6 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
     }
   }
 
-  // A resize holds the pointer captured, so Escape is the only way out that
-  // discards the drag instead of committing it.
-  useEffect(() => {
-    if (!resizePreview) return
-    const cancel = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      resizeRef.current = null
-      setResizePreview(null)
-    }
-    window.addEventListener('keydown', cancel)
-    return () => window.removeEventListener('keydown', cancel)
-  }, [resizePreview])
-
   const handleResizeStart = (
     event: PointerEvent<SVGRectElement>,
     annotation: Annotation,
@@ -447,10 +435,6 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
     event.stopPropagation()
     event.preventDefault()
     setSelected(annotation.id)
-    // Capture on the root, not on the handle: the drag has to keep receiving
-    // moves once the pointer leaves the handle's own few pixels, and the root is
-    // the one element guaranteed to stay under the whole gesture.
-    svg.setPointerCapture(event.pointerId)
     const preview: ResizePreview = isEndpoint
       ? { id: annotation.id, handle, start: annotation.start, end: annotation.end }
       : { id: annotation.id, handle, bounds: annotation.bounds }
@@ -461,7 +445,7 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
     setResizePreview(preview)
   }
 
-  const handleResizeMove = (event: PointerEvent<SVGSVGElement>) => {
+  const handleResizeMove = (event: NativePointerEvent) => {
     const resize = resizeRef.current
     const svg = svgRef.current
     if (!resize || resize.pointerId !== event.pointerId || !svg) return
@@ -498,12 +482,35 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
     setResizePreview(preview)
   }
 
-  const handleResizeEnd = (event: PointerEvent<SVGSVGElement>) => {
-    const resize = resizeRef.current
-    if (!resize || resize.pointerId !== event.pointerId) return
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-    endResize(event.type !== 'pointercancel')
-  }
+
+  // The live drag is tracked on the window rather than on a captured element.
+  // Pointer capture can be lost — the pointer leaves the page, a gesture is
+  // interrupted — and a missed pointerup would strand the drag: the preview
+  // would stay on screen, the wrong handle would stay lit, and the overlay would
+  // stop responding. A window listener always sees the release.
+  const resizeHandlersRef = useRef({ move: handleResizeMove, end: endResize })
+  resizeHandlersRef.current = { move: handleResizeMove, end: endResize }
+
+  useEffect(() => {
+    if (!resizePreview) return
+    const move = (event: NativePointerEvent) => resizeHandlersRef.current.move(event)
+    const finish = (event: NativePointerEvent) => resizeHandlersRef.current.end(event.type === 'pointerup')
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      resizeHandlersRef.current.end(false)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', finish)
+    window.addEventListener('pointercancel', finish)
+    window.addEventListener('keydown', cancel)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
+      window.removeEventListener('keydown', cancel)
+    }
+  }, [Boolean(resizePreview)])
 
   const handleAnnotationPointerDown = (event: PointerEvent<SVGGElement>, id: string) => {
     event.stopPropagation()
@@ -560,10 +567,6 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
   }
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
-    if (resizeRef.current) {
-      handleResizeMove(event)
-      return
-    }
     const marquee = marqueeRef.current
     if (marquee?.pointerId === event.pointerId) {
       const point = asPoint(event, event.currentTarget)
@@ -578,10 +581,6 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
   }
 
   const handlePointerUp = async (event: PointerEvent<SVGSVGElement>) => {
-    if (resizeRef.current) {
-      handleResizeEnd(event)
-      return
-    }
     const marquee = marqueeRef.current
     if (marquee?.pointerId === event.pointerId) {
       const end = asPoint(event, event.currentTarget)
