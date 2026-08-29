@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type PointerEvent } from 'react'
 import type { Annotation, Point } from '#/lib/annotations'
 import { annotationBounds, annotationColors, createAnnotationBase } from '#/lib/annotations'
+import { constrainDrawingEnd } from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
 
 interface AnnotationOverlayProps {
@@ -136,6 +137,12 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
     [annotations, pageNumber],
   )
 
+  const constrainedEnd = (start: Point, end: Point, event: PointerEvent<SVGSVGElement>) => {
+    if (tool !== 'rectangle' && tool !== 'ellipse' && tool !== 'arrow') return end
+    const rect = event.currentTarget.getBoundingClientRect()
+    return constrainDrawingEnd(start, end, tool, event.shiftKey, rect.width, rect.height)
+  }
+
   const createAtPoint = async (point: Point) => {
     if (!activeDocument) return
     const style = { color, opacity: 0.95, strokeWidth: 2, fontSize: 12 }
@@ -169,19 +176,20 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
     event.currentTarget.setPointerCapture(event.pointerId)
     startRef.current = point
     pointsRef.current = [point]
-    setDraftEnd(point)
+    setDraftEnd(constrainedEnd(point, point, event))
   }
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (!startRef.current) return
     const point = asPoint(event)
     if (tool === 'ink') pointsRef.current.push(point)
-    setDraftEnd(point)
+    setDraftEnd(constrainedEnd(startRef.current, point, event))
   }
 
   const handlePointerUp = async (event: PointerEvent<SVGSVGElement>) => {
     const start = startRef.current
-    const end = draftEnd ?? asPoint(event)
+    const pointer = asPoint(event)
+    const end = start ? constrainedEnd(start, pointer, event) : pointer
     startRef.current = null
     setDraftEnd(null)
     if (!start || !activeDocument) return
