@@ -440,6 +440,28 @@ describe('batches that name the same mark twice', () => {
     expect(editorStore.getState().history).toHaveLength(1)
   })
 
+  it('rejects a malformed batch whole, and says nothing was applied', async () => {
+    const first = note('webmcp')
+    const second = { ...note('webmcp'), body: 'Second note.' }
+    await editorStore.getState().createAnnotations([first, second], 'Add notes')
+    editorStore.setState({ history: [], future: [] })
+
+    // Validation is all-or-nothing on purpose: an agent that has to work out
+    // which half of a malformed batch landed is worse off than one that resends it.
+    await expect(
+      run('update_annotations', {
+        updates: [
+          { id: first.id, body: 'Would have been fine.' },
+          { id: second.id, style: { color: '' } },
+        ],
+      }),
+    ).rejects.toThrow(/updates\[1\]\.style\.color.*Nothing was applied/s)
+
+    expect(editorStore.getState().history).toEqual([])
+    const stored = editorStore.getState().annotations.find((item) => item.id === first.id)
+    expect(stored?.kind === 'note' && stored.body).toBe('Check the methodology.')
+  })
+
   it('reports a repeated delete id once', async () => {
     const mine = note('webmcp')
     await editorStore.getState().createAnnotations([mine], 'Add note')

@@ -60,8 +60,18 @@ function tool<Schema extends z.ZodType>(definition: ToolDefinition<Schema>): Web
     inputSchema: toJsonSchema(definition.schema),
     annotations: { readOnlyHint: definition.readOnly, untrustedContentHint: true },
     execute: async (input, options) => {
+      let parsed: z.output<Schema>
       try {
-        return await definition.execute(definition.schema.parse(input ?? {}) as z.output<Schema>, options)
+        parsed = definition.schema.parse(input ?? {}) as z.output<Schema>
+      } catch (error) {
+        // A request that fails validation is rejected whole, before anything is
+        // applied. Say so: an agent that assumed a partial write would otherwise
+        // have to go and find out what landed.
+        const scope = definition.readOnly ? '' : ' Nothing was applied — fix the request and send it again.'
+        throw new Error(`${formatToolError(error)}.${scope}`)
+      }
+      try {
+        return await definition.execute(parsed, options)
       } catch (error) {
         throw new Error(formatToolError(error))
       }
@@ -590,7 +600,7 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
       name: 'create_annotations',
       title: 'Create annotations',
       description:
-        'Add up to 20 marks in one reversible step. Prefer quote anchoring for markup and notes — it survives zoom and reflow — and fall back to normalized 0–1 coordinates for shapes, ink, and free-floating notes. Items that fail are reported individually; the rest still land.',
+        'Add up to 20 marks in one reversible step. Prefer quote anchoring for markup and notes — it survives zoom and reflow — and fall back to normalized 0–1 coordinates for shapes, ink, and free-floating notes. A request that fails validation is rejected whole and applies nothing; an item that validates but cannot be placed — a quote that is not on the page, say — is reported in "failed" while the rest still land.',
       schema: createAnnotationsInput,
       readOnly: false,
       execute: async (input) => {
@@ -667,7 +677,7 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
       name: 'update_annotations',
       title: 'Update annotations',
       description:
-        'Change the text, resolved state, or style of existing marks. All of them land as one undo step. body applies to text and note annotations, resolved only to notes; an update naming a field its annotation does not have is rejected outright rather than silently ignored.',
+        'Change the text, resolved state, or style of existing marks. All of them land as one undo step, and naming the same id twice layers the patches rather than conflicting. body applies to text and note annotations, resolved only to notes. A request that fails validation is rejected whole and applies nothing; an update naming a field its annotation does not have is reported in "failed" rather than silently ignored, and the rest still land.',
       schema: updateAnnotationsInput,
       readOnly: false,
       execute: async (input) => {
