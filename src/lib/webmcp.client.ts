@@ -713,11 +713,18 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
             continue
           }
 
+          // A patch that survives the input contract can still fail the persisted
+          // schema. Fail that item alone rather than discarding the whole batch.
+          let next: Annotation
+          try {
+            next = annotationSchema.parse({ ...current, ...patch, lastModifiedBy: 'webmcp', updatedAt: now })
+          } catch (error) {
+            failed.push({ id: update.id, reason: formatToolError(error) })
+            continue
+          }
+
           if (!originals.has(update.id)) originals.set(update.id, current)
-          working.set(
-            update.id,
-            annotationSchema.parse({ ...current, ...patch, lastModifiedBy: 'webmcp', updatedAt: now }),
-          )
+          working.set(update.id, next)
           const changed = changedFields.get(update.id) ?? new Set<string>()
           for (const field of Object.keys(patch)) changed.add(field)
           changedFields.set(update.id, changed)

@@ -57,9 +57,11 @@ export function toJsonSchema(schema: z.ZodType) {
 
 export const emptyInputSchema = z.object({})
 
+// Every field here has to be at least as strict as annotationStyleSchema, or an
+// input the contract advertises as valid fails when the annotation is persisted.
 export const styleInputSchema = z
   .object({
-    color: z.string().optional().describe('CSS hex colour, for example "#159b98".'),
+    color: z.string().min(1).optional().describe('CSS hex colour, for example "#159b98".'),
     opacity: z.number().min(0.05).max(1).optional(),
     strokeWidth: z.number().min(0.5).max(20).optional(),
     fill: z.string().optional(),

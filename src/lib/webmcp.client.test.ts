@@ -410,6 +410,36 @@ describe('batches that name the same mark twice', () => {
     })
   })
 
+  it('keeps the valid patches when a later one fails the persisted schema', async () => {
+    const first = note('webmcp')
+    const second = { ...note('webmcp'), body: 'Second note.' }
+    await editorStore.getState().createAnnotations([first, second], 'Add notes')
+    editorStore.setState({ history: [], future: [] })
+
+    // Style is the seam where the input contract and the persisted schema can
+    // drift apart, so a patch that gets past one can still be rejected by the other.
+    const result = (await run('update_annotations', {
+      updates: [
+        { id: first.id, body: 'Kept.' },
+        { id: second.id, style: { opacity: 0.5 } },
+      ],
+    })) as { updated: Array<{ id: string }>; failed: Array<unknown> }
+
+    expect(result.updated.map((entry) => entry.id)).toEqual([first.id, second.id])
+    expect(result.failed).toEqual([])
+    expect(editorStore.getState().history).toHaveLength(1)
+  })
+
+  it('rejects a style the annotation schema would refuse, at the contract edge', async () => {
+    const comment = note('webmcp')
+    await editorStore.getState().createAnnotations([comment], 'Add note')
+
+    await expect(
+      run('update_annotations', { updates: [{ id: comment.id, style: { color: '' } }] }),
+    ).rejects.toThrow(/style\.color/)
+    expect(editorStore.getState().history).toHaveLength(1)
+  })
+
   it('reports a repeated delete id once', async () => {
     const mine = note('webmcp')
     await editorStore.getState().createAnnotations([mine], 'Add note')

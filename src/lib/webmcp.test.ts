@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { annotationSummary, createAnnotationBase, type Annotation } from './annotations'
+import { annotationStyleSchema, annotationSummary, createAnnotationBase, type Annotation } from './annotations'
 import {
   applicableFields,
   createAnnotationsInput,
   formatToolError,
   partitionDeletable,
+  styleInputSchema,
   toJsonSchema,
   ToolError,
   updateAnnotationsInput,
@@ -99,6 +100,15 @@ describe('the published tool contract', () => {
     expect(Object.keys(update.properties).sort()).toEqual(['body', 'id', 'resolved', 'style'])
     expect(update.required).toEqual(['id'])
     expect(update.properties.resolved?.description).toContain('Note annotations only')
+  })
+})
+
+describe('the input contract matches what can be persisted', () => {
+  it('refuses a style the annotation schema would refuse', () => {
+    // The published contract must not advertise a value that fails on write.
+    expect(annotationStyleSchema.safeParse({ ...style, color: '' }).success).toBe(false)
+    expect(styleInputSchema.safeParse({ color: '' }).success).toBe(false)
+    expect(styleInputSchema.safeParse({ color: '#159b98', opacity: 0.5 }).success).toBe(true)
   })
 })
 
