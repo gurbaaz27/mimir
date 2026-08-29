@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createAnnotationBase, type Annotation } from './annotations'
-import { db } from './db.client'
+import { db, type DocumentRecord } from './db.client'
 import { editorStore } from './editor-store.client'
 
 function note(): Annotation {
@@ -20,8 +20,16 @@ function note(): Annotation {
 
 describe('shared editor command path', () => {
   beforeEach(async () => {
+    await db.documents.clear()
     await db.annotations.clear()
-    editorStore.setState({ annotations: [], history: [], future: [], selectedAnnotationId: null })
+    editorStore.setState({
+      annotations: [],
+      history: [],
+      future: [],
+      selectedAnnotationId: null,
+      activeDocument: null,
+      zoom: 1,
+    })
   })
 
   it('persists, undoes, and redoes the same annotation command', async () => {
@@ -37,6 +45,30 @@ describe('shared editor command path', () => {
     await editorStore.getState().redo()
     expect(editorStore.getState().annotations).toHaveLength(1)
     expect(await db.annotations.get(annotation.id)).toBeDefined()
+  })
+
+  it('persists zoom changes without requiring the document to be closed', async () => {
+    const record: DocumentRecord = {
+      id: 'document-1',
+      fingerprint: 'fingerprint',
+      name: 'research-notes.pdf',
+      size: 1024,
+      pageCount: 12,
+      blob: new Blob(['pdf']),
+      createdAt: new Date().toISOString(),
+      lastOpenedAt: new Date().toISOString(),
+      lastPage: 1,
+      zoom: 1.3,
+      rotation: 0,
+      indexedPages: 0,
+    }
+    await db.documents.add(record)
+    await editorStore.getState().openDocument(record.id)
+
+    await editorStore.getState().setZoom(1.2)
+
+    expect(editorStore.getState().zoom).toBe(1.2)
+    expect((await db.documents.get(record.id))?.zoom).toBe(1.2)
   })
 
   it('preserves authorship when an agent edit uses the human command model', async () => {

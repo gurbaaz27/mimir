@@ -411,7 +411,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .reader-body.has-sidebar { grid-template-columns: 228px minmax(0,1fr); }
 .viewer-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--desk); }
 .viewer-stage::after { content: ""; position: absolute; z-index: 6; inset: 0; box-shadow: inset 0 10px 20px -14px oklch(0.3 0.03 70 / .55); pointer-events: none; }
-.document-scroller { width: 100%; height: 100%; overflow: auto; scrollbar-gutter: stable; }
+.document-scroller { width: 100%; height: 100%; overflow: auto; scrollbar-gutter: stable; touch-action: pan-x pan-y; overscroll-behavior: contain; }
 .document-scroller.is-pan-enabled { cursor: grab; }
 .document-scroller.is-pan-enabled.is-panning { cursor: grabbing; scroll-behavior: auto; user-select: none; }
 .virtual-page-stack { position: relative; width: 100%; }

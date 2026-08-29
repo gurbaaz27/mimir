@@ -66,7 +66,7 @@ interface EditorState {
   setTool: (tool: EditorTool) => void
   setColor: (color: string) => void
   setCurrentPage: (page: number) => void
-  setZoom: (zoom: number) => void
+  setZoom: (zoom: number) => Promise<void>
   setRotation: (rotation: number) => void
   setSelectedAnnotation: (id: string | null) => void
   setSelectedAnnotations: (ids: Array<string>) => void
@@ -294,7 +294,15 @@ export const editorStore = createStore<EditorState>((set, get) => ({
     const pageCount = get().activeDocument?.pageCount ?? 1
     set({ currentPage: Math.max(1, Math.min(currentPage, pageCount)) })
   },
-  setZoom: (zoom) => set({ zoom: Math.max(0.5, Math.min(3, zoom)) }),
+  setZoom: (zoom) => {
+    const nextZoom = Math.max(0.5, Math.min(3, zoom))
+    const documentId = get().activeDocument?.id
+    set((state) => ({
+      zoom: nextZoom,
+      activeDocument: state.activeDocument ? { ...state.activeDocument, zoom: nextZoom } : null,
+    }))
+    return documentId ? db.documents.update(documentId, { zoom: nextZoom }).then(() => undefined) : Promise.resolve()
+  },
   setRotation: (rotation) => set({ rotation: ((rotation % 360) + 360) % 360 }),
   setSelectedAnnotation: (selectedAnnotationId) =>
     set({
