@@ -49,7 +49,8 @@ function useBoxResize({
   bounds: NormalizedRect
   onCommit: (bounds: NormalizedRect) => void
 }) {
-  const [preview, setPreview] = useState<NormalizedRect | null>(null)
+  const [active, setActive] = useState<{ handle: ResizeHandle; bounds: NormalizedRect } | null>(null)
+  const preview = active?.bounds ?? null
   const resizeRef = useRef<{
     pointerId: number
     handle: ResizeHandle
@@ -67,7 +68,7 @@ function useBoxResize({
       if (event.key !== 'Escape') return
       event.preventDefault()
       resizeRef.current = null
-      setPreview(null)
+      setActive(null)
     }
     window.addEventListener('keydown', cancel)
     return () => window.removeEventListener('keydown', cancel)
@@ -86,7 +87,7 @@ function useBoxResize({
       origin: bounds,
       next: bounds,
     }
-    setPreview(bounds)
+    setActive({ handle, bounds })
   }
 
   const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
@@ -111,7 +112,7 @@ function useBoxResize({
       event.shiftKey,
     )
     resize.next = next
-    setPreview(next)
+    setActive({ handle: resize.handle, bounds: next })
   }
 
   const onPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
@@ -119,13 +120,13 @@ function useBoxResize({
     if (!resize || resize.pointerId !== event.pointerId) return
     resizeRef.current = null
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-    setPreview(null)
+    setActive(null)
     // A click that never moved must not land an entry on the undo stack.
     if (event.type === 'pointercancel' || sameRect(resize.next, resize.origin)) return
     onCommit(resize.next)
   }
 
-  return { preview, onPointerDown, onPointerMove, onPointerUp }
+  return { preview, activeHandle: active?.handle ?? null, onPointerDown, onPointerMove, onPointerUp }
 }
 
 /** The eight grab points around a box, sized so they never scale with the page zoom. */
@@ -134,6 +135,7 @@ function ResizeHandles({
   width,
   height,
   scale,
+  activeHandle,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -144,6 +146,8 @@ function ResizeHandles({
   height: number
   /** CSS scale already applied to the box, which the handles undo. */
   scale: number
+  /** The handle being dragged, so it stays lit wherever the pointer goes. */
+  activeHandle: ResizeHandle | null
   onPointerDown: (event: PointerEvent<HTMLButtonElement>, handle: ResizeHandle) => void
   onPointerMove: (event: PointerEvent<HTMLButtonElement>) => void
   onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void
@@ -151,12 +155,15 @@ function ResizeHandles({
   const safeScale = Math.max(scale, 0.01)
   const wideEnough = width >= EDGE_HANDLE_MINIMUM_PIXELS
   const tallEnough = height >= EDGE_HANDLE_MINIMUM_PIXELS
+  // Cap the hit target at half the box so neighbouring handles never both cover
+  // the same point — otherwise stacking order, not proximity, picks the winner.
+  const hitPixels = Math.max(HANDLE_PIXELS, Math.min(HANDLE_HIT_PIXELS, width / 2, height / 2))
   return (
     <div
       className="annotation-resize-handles"
       style={{
         '--handle-size': `${HANDLE_PIXELS / safeScale}px`,
-        '--handle-hit': `${HANDLE_HIT_PIXELS / safeScale}px`,
+        '--handle-hit': `${hitPixels / safeScale}px`,
       } as React.CSSProperties}
     >
       {resizeHandleAnchors.map((handle) => {
@@ -166,7 +173,7 @@ function ResizeHandles({
           <button
             key={handle.name}
             type="button"
-            className={`annotation-resize-handle is-${handle.name}`}
+            className={`annotation-resize-handle is-${handle.name} ${activeHandle === handle.name ? 'is-resizing' : ''}`}
             aria-label={`Resize ${label} from the ${handle.label}`}
             style={{ cursor: handle.cursor }}
             onPointerDown={(event) => onPointerDown(event, handle.name)}
@@ -395,6 +402,7 @@ function StickyNote({
           width={width}
           height={height}
           scale={zoom}
+          activeHandle={resize.activeHandle}
           onPointerDown={resize.onPointerDown}
           onPointerMove={resize.onPointerMove}
           onPointerUp={resize.onPointerUp}
@@ -588,6 +596,7 @@ function TextBox({
           width={bounds.width * pageWidth}
           height={bounds.height * pageHeight}
           scale={1}
+          activeHandle={resize.activeHandle}
           onPointerDown={resize.onPointerDown}
           onPointerMove={resize.onPointerMove}
           onPointerUp={resize.onPointerUp}
