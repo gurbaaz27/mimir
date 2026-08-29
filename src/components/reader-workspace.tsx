@@ -330,7 +330,7 @@ export function ReaderWorkspace() {
                   Import sidecar
                   <input type="file" accept="application/json,.json" onChange={(event) => void importAnnotations(event.target.files?.[0])} />
                 </label>
-                <Dialog.Close asChild><button type="button" className="secondary-button">Cancel</button></Dialog.Close>
+                <Dialog.Close asChild><button type="button" className="secondary-button embossed-secondary-button">Cancel</button></Dialog.Close>
                 <button type="button" className="primary-button" disabled={exportProgress !== null} onClick={() => void saveExport()}>
                   {exportProgress !== null ? <LoaderCircle className="spin" size={16} /> : <DownloadIcon size={16} />}
                   {exportProgress !== null ? 'Preparing…' : `Save ${exportFormat.toUpperCase()}`}

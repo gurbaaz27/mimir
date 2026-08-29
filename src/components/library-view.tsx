@@ -283,7 +283,7 @@ export function LibraryView() {
               )}
               <div className="dialog-actions remove-dialog-actions">
                 <Dialog.Close asChild>
-                  <button type="button" className="secondary-button" disabled={removing}>Keep document</button>
+                  <button type="button" className="secondary-button embossed-secondary-button" disabled={removing}>Keep document</button>
                 </Dialog.Close>
                 <button
                   type="button"
