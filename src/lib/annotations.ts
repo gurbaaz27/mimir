@@ -91,6 +91,7 @@ export const annotationSchema = z.discriminatedUnion('kind', [
 export type Point = z.infer<typeof pointSchema>
 export type NormalizedRect = z.infer<typeof rectSchema>
 export type AnnotationStyle = z.infer<typeof annotationStyleSchema>
+export type AnnotationPatch = Omit<Partial<Annotation>, 'style'> & { style?: Partial<AnnotationStyle> } & Record<string, unknown>
 export type QuoteAnchor = z.infer<typeof quoteAnchorSchema>
 export type Annotation = z.infer<typeof annotationSchema>
 export type AnnotationKind = Annotation['kind']
@@ -188,6 +189,37 @@ export function annotationBounds(annotation: Annotation): NormalizedRect | null 
       return annotation.bounds
     case 'note':
       return { x: annotation.point.x, y: annotation.point.y, width: 0.03, height: 0.03 }
+  }
+}
+
+/** Translate an annotation in normalized page coordinates for a group move. */
+export function translateAnnotation(annotation: Annotation, dx: number, dy: number): Annotation {
+  const movePoint = (point: Point): Point => ({
+    x: Math.max(0, Math.min(1, point.x + dx)),
+    y: Math.max(0, Math.min(1, point.y + dy)),
+  })
+  const moveRect = (rect: NormalizedRect): NormalizedRect => ({
+    ...rect,
+    x: Math.max(0, Math.min(1 - rect.width, rect.x + dx)),
+    y: Math.max(0, Math.min(1 - rect.height, rect.y + dy)),
+  })
+
+  switch (annotation.kind) {
+    case 'markup':
+      return { ...annotation, quads: annotation.quads.map((quad) => moveRect(quad)) }
+    case 'ink':
+      return { ...annotation, strokes: annotation.strokes.map((stroke) => stroke.map(movePoint)) }
+    case 'shape':
+      return {
+        ...annotation,
+        ...(annotation.bounds ? { bounds: moveRect(annotation.bounds) } : {}),
+        ...(annotation.start ? { start: movePoint(annotation.start) } : {}),
+        ...(annotation.end ? { end: movePoint(annotation.end) } : {}),
+      }
+    case 'text':
+      return { ...annotation, bounds: moveRect(annotation.bounds) }
+    case 'note':
+      return { ...annotation, point: movePoint(annotation.point) }
   }
 }
 

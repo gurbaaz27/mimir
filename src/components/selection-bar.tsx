@@ -10,24 +10,25 @@ function titleCase(annotation: Annotation) {
   return name[0]?.toUpperCase() + name.slice(1)
 }
 
-/**
- * Actions for whatever is selected on the page. Editing lives on the page
- * itself, so this only carries what a mark cannot express inline.
- */
+/** Actions for the current selection. Multi-selection actions are committed as one command. */
 export function SelectionBar() {
   const annotations = useEditorStore((state) => state.annotations)
-  const selectedId = useEditorStore((state) => state.selectedAnnotationId)
-  const update = useEditorStore((state) => state.updateAnnotation)
+  const selectedIds = useEditorStore((state) => state.selectedAnnotationIds)
+  const update = useEditorStore((state) => state.updateAnnotations)
   const remove = useEditorStore((state) => state.deleteAnnotations)
-  const annotation = annotations.find((item) => item.id === selectedId)
+  const selected = annotations.filter((item) => selectedIds.includes(item.id))
+  const annotation = selected[0]
 
   if (!annotation) return null
 
+  const allSameColor = selected.every((item) => item.style.color === annotation.style.color)
+  const label = selected.length === 1 ? titleCase(annotation) : `${selected.length} annotations`
+
   return (
     <Tooltip.Provider>
-      <div className="selection-bar" role="group" aria-label="Selected annotation">
+      <div className="selection-bar" role="group" aria-label={selected.length === 1 ? 'Selected annotation' : `${selected.length} selected annotations`}>
         <span>
-          <b>{titleCase(annotation)}</b>
+          <b>{label}</b>
         </span>
         <div className="selection-swatches">
           {annotationColors.map((item) => (
@@ -35,29 +36,27 @@ export function SelectionBar() {
               type="button"
               key={item.value}
               aria-label={item.name}
-              aria-pressed={annotation.style.color === item.value}
-              className={annotation.style.color === item.value ? 'is-active' : ''}
+              aria-pressed={allSameColor && annotation.style.color === item.value}
+              className={allSameColor && annotation.style.color === item.value ? 'is-active' : ''}
               style={{ background: item.value }}
-              onClick={() =>
-                void update(annotation.id, { style: { ...annotation.style, color: item.value } } as Partial<Annotation>)
-              }
+              onClick={() => void update(selected.map((item) => item.id), { style: { color: item.value } }, 'human', 'Change annotation colors')}
             />
           ))}
         </div>
-        {annotation.kind === 'note' && (
+        {selected.length === 1 && annotation.kind === 'note' && (
           <IconButton
             label={annotation.resolved ? 'Reopen note' : 'Mark resolved'}
             icon={CheckIcon}
             active={annotation.resolved}
-            onClick={() => void update(annotation.id, { resolved: !annotation.resolved } as Partial<Annotation>)}
+            onClick={() => void update([annotation.id], { resolved: !annotation.resolved }, 'human', 'Edit annotation')}
           />
         )}
         <IconButton
-          label="Delete annotation"
+          label={selected.length === 1 ? 'Delete annotation' : `Delete ${selected.length} annotations`}
           shortcut="⌫"
           icon={TrashIcon}
           className="is-danger"
-          onClick={() => void remove([annotation.id])}
+          onClick={() => void remove(selected.map((item) => item.id), `Delete ${selected.length} annotations`)}
         />
       </div>
     </Tooltip.Provider>

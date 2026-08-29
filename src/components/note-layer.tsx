@@ -39,13 +39,20 @@ function StickyNote({
   pageHeight: number
   zoom: number
 }) {
+  const tool = useEditorStore((state) => state.tool)
+  const selectedIds = useEditorStore((state) => state.selectedAnnotationIds)
   const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
+  const setSelectedAnnotations = useEditorStore((state) => state.setSelectedAnnotations)
+  const beginAnnotationDrag = useEditorStore((state) => state.beginAnnotationDrag)
+  const updateAnnotationDrag = useEditorStore((state) => state.updateAnnotationDrag)
+  const finishAnnotationDrag = useEditorStore((state) => state.finishAnnotationDrag)
   const update = useEditorStore((state) => state.updateAnnotation)
+  const annotationDrag = useEditorStore((state) => state.annotationDrag)
   const [body, setBody] = useState(annotation.body)
   const [collapsed, setCollapsed] = useState(annotation.resolved)
   const [dragPoint, setDragPoint] = useState<Point | null>(null)
-  const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const suppressClickRef = useRef(false)
+  const dragRef = useRef<{ x: number; y: number; moved: boolean; group: boolean } | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => setBody(annotation.body), [annotation.body])
@@ -54,7 +61,11 @@ function StickyNote({
     if (selected && !collapsed && !annotation.body) bodyRef.current?.focus()
   }, [selected, collapsed, annotation.body])
 
-  const point = dragPoint ?? annotation.point
+  const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
+  const point = dragPoint ?? {
+    x: annotation.point.x + (groupOffset?.dx ?? 0),
+    y: annotation.point.y + (groupOffset?.dy ?? 0),
+  }
   const width = (collapsed ? PIN_SIZE : NOTE_WIDTH) * zoom
   const height = (collapsed ? PIN_SIZE : NOTE_HEIGHT) * zoom
   const left = clamp(point.x * pageWidth, 0, Math.max(0, pageWidth - width))
@@ -71,9 +82,18 @@ function StickyNote({
   const handleDragStart = (event: PointerEvent<HTMLElement>) => {
     event.stopPropagation()
     suppressClickRef.current = false
+    if (tool === 'select') {
+      const ids = selectedIds.includes(annotation.id) ? selectedIds : [annotation.id]
+      if (!selectedIds.includes(annotation.id)) setSelectedAnnotations([annotation.id])
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+      dragRef.current = { x: event.clientX, y: event.clientY, moved: false, group: true }
+      beginAnnotationDrag(ids)
+      return
+    }
     select()
     event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = { x: event.clientX, y: event.clientY, moved: false }
+    dragRef.current = { x: event.clientX, y: event.clientY, moved: false, group: false }
   }
 
   const handleDragMove = (event: PointerEvent<HTMLElement>) => {
@@ -84,17 +104,23 @@ function StickyNote({
     if (!drag.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
     drag.moved = true
     suppressClickRef.current = true
-    setDragPoint({
-      x: clamp(annotation.point.x + dx / pageWidth, 0, 1),
-      y: clamp(annotation.point.y + dy / pageHeight, 0, 1),
-    })
+    if (drag.group) {
+      updateAnnotationDrag(dx / pageWidth, dy / pageHeight)
+    } else {
+      setDragPoint({
+        x: clamp(annotation.point.x + dx / pageWidth, 0, 1),
+        y: clamp(annotation.point.y + dy / pageHeight, 0, 1),
+      })
+    }
   }
 
   const handleDragEnd = (event: PointerEvent<HTMLElement>) => {
     const drag = dragRef.current
     dragRef.current = null
-    event.currentTarget.releasePointerCapture(event.pointerId)
-    if (drag?.moved && dragPoint) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    if (drag?.group) {
+      void finishAnnotationDrag()
+    } else if (drag?.moved && dragPoint) {
       void update(annotation.id, { point: dragPoint } as Partial<Annotation>).finally(() => setDragPoint(null))
     } else {
       setDragPoint(null)
@@ -197,13 +223,20 @@ function TextBox({
   pageHeight: number
   zoom: number
 }) {
+  const tool = useEditorStore((state) => state.tool)
+  const selectedIds = useEditorStore((state) => state.selectedAnnotationIds)
   const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
+  const setSelectedAnnotations = useEditorStore((state) => state.setSelectedAnnotations)
+  const beginAnnotationDrag = useEditorStore((state) => state.beginAnnotationDrag)
+  const updateAnnotationDrag = useEditorStore((state) => state.updateAnnotationDrag)
+  const finishAnnotationDrag = useEditorStore((state) => state.finishAnnotationDrag)
   const update = useEditorStore((state) => state.updateAnnotation)
+  const annotationDrag = useEditorStore((state) => state.annotationDrag)
   const [body, setBody] = useState(annotation.body)
   const [contentHeight, setContentHeight] = useState<number | null>(null)
   const [dragBounds, setDragBounds] = useState<NormalizedRect | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
+  const dragRef = useRef<{ x: number; y: number; moved: boolean; group: boolean } | null>(null)
   const dragBoundsRef = useRef<NormalizedRect | null>(null)
 
   useEffect(() => setBody(annotation.body), [annotation.body])
@@ -211,9 +244,15 @@ function TextBox({
     if (selected && !annotation.body) inputRef.current?.focus()
   }, [selected, annotation.body])
 
-  const bounds = dragBounds ?? {
+  const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
+  const baseBounds = {
     ...annotation.bounds,
-    height: contentHeight ?? annotation.bounds.height,
+    x: annotation.bounds.x + (groupOffset?.dx ?? 0),
+    y: annotation.bounds.y + (groupOffset?.dy ?? 0),
+  }
+  const bounds = dragBounds ?? {
+    ...baseBounds,
+    height: contentHeight ?? baseBounds.height,
   }
 
   useLayoutEffect(() => {
@@ -235,9 +274,18 @@ function TextBox({
 
   const handleDragStart = (event: PointerEvent<HTMLButtonElement>) => {
     event.stopPropagation()
+    if (tool === 'select') {
+      const ids = selectedIds.includes(annotation.id) ? selectedIds : [annotation.id]
+      if (!selectedIds.includes(annotation.id)) setSelectedAnnotations([annotation.id])
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+      dragRef.current = { x: event.clientX, y: event.clientY, moved: false, group: true }
+      beginAnnotationDrag(ids)
+      return
+    }
     setSelected(annotation.id)
     event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = { x: event.clientX, y: event.clientY, moved: false }
+    dragRef.current = { x: event.clientX, y: event.clientY, moved: false, group: false }
     dragBoundsRef.current = bounds
   }
 
@@ -248,6 +296,10 @@ function TextBox({
     const dy = event.clientY - drag.y
     if (!drag.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
     drag.moved = true
+    if (drag.group) {
+      updateAnnotationDrag(dx / pageWidth, dy / pageHeight)
+      return
+    }
     const nextBounds = {
       ...(dragBoundsRef.current ?? bounds),
       x: clamp(annotation.bounds.x + dx / pageWidth, 0, 1 - annotation.bounds.width),
@@ -262,6 +314,10 @@ function TextBox({
     dragRef.current = null
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    if (drag?.group) {
+      void finishAnnotationDrag()
+      return
     }
     const nextBounds = dragBoundsRef.current
     dragBoundsRef.current = null
@@ -332,7 +388,7 @@ function TextBox({
  */
 export function NoteLayer({ pageNumber, annotations, pageWidth, pageHeight, zoom }: NoteLayerProps) {
   const tool = useEditorStore((state) => state.tool)
-  const selectedId = useEditorStore((state) => state.selectedAnnotationId)
+  const selectedIds = useEditorStore((state) => state.selectedAnnotationIds)
   const pageAnnotations = useMemo(
     () =>
       annotations.filter(
@@ -351,7 +407,7 @@ export function NoteLayer({ pageNumber, annotations, pageWidth, pageHeight, zoom
           <StickyNote
             key={annotation.id}
             annotation={annotation}
-            selected={selectedId === annotation.id}
+            selected={selectedIds.includes(annotation.id)}
             pageWidth={pageWidth}
             pageHeight={pageHeight}
             zoom={zoom}
@@ -360,7 +416,7 @@ export function NoteLayer({ pageNumber, annotations, pageWidth, pageHeight, zoom
           <TextBox
             key={annotation.id}
             annotation={annotation}
-            selected={selectedId === annotation.id}
+            selected={selectedIds.includes(annotation.id)}
             pageWidth={pageWidth}
             pageHeight={pageHeight}
             zoom={zoom}

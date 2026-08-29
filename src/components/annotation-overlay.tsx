@@ -9,16 +9,38 @@ interface AnnotationOverlayProps {
   annotations: Array<Annotation>
 }
 
-function asPoint(event: PointerEvent<SVGSVGElement>): Point {
-  const rect = event.currentTarget.getBoundingClientRect()
+function asPoint(event: { clientX: number; clientY: number }, svg: SVGSVGElement): Point {
+  const rect = svg.getBoundingClientRect()
   return {
     x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
     y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
   }
 }
 
-function AnnotationGlyph({ annotation, selected }: { annotation: Annotation; selected: boolean }) {
-  const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
+function boundsBetween(start: Point, end: Point) {
+  return {
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  }
+}
+
+function AnnotationGlyph({
+  annotation,
+  selected,
+  dragOffset,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+}: {
+  annotation: Annotation
+  selected: boolean
+  dragOffset: { dx: number; dy: number } | null
+  onPointerDown: (event: PointerEvent<SVGGElement>, id: string) => void
+  onPointerMove: (event: PointerEvent<SVGGElement>) => void
+  onPointerUp: (event: PointerEvent<SVGGElement>) => void
+}) {
   const bounds = annotationBounds(annotation)
   const common = {
     stroke: annotation.style.color,
@@ -30,10 +52,11 @@ function AnnotationGlyph({ annotation, selected }: { annotation: Annotation; sel
     <g
       className={`annotation-glyph ${selected ? 'is-selected' : ''}`}
       data-annotation-id={annotation.id}
-      onPointerDown={(event) => {
-        event.stopPropagation()
-        setSelected(annotation.id)
-      }}
+      transform={dragOffset ? `translate(${dragOffset.dx} ${dragOffset.dy})` : undefined}
+      onPointerDown={(event) => onPointerDown(event, annotation.id)}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
     >
       {annotation.kind === 'markup' &&
         annotation.quads.map((quad, index) => {
@@ -118,23 +141,32 @@ function AnnotationGlyph({ annotation, selected }: { annotation: Annotation; sel
 }
 
 export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlayProps) {
+  const svgRef = useRef<SVGSVGElement>(null)
   const tool = useEditorStore((state) => state.tool)
   const color = useEditorStore((state) => state.color)
   const activeDocument = useEditorStore((state) => state.activeDocument)
-  const selectedId = useEditorStore((state) => state.selectedAnnotationId)
+  const selectedIds = useEditorStore((state) => state.selectedAnnotationIds)
+  const annotationDrag = useEditorStore((state) => state.annotationDrag)
   const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
+  const setSelectedAnnotations = useEditorStore((state) => state.setSelectedAnnotations)
+  const beginAnnotationDrag = useEditorStore((state) => state.beginAnnotationDrag)
+  const updateAnnotationDrag = useEditorStore((state) => state.updateAnnotationDrag)
+  const finishAnnotationDrag = useEditorStore((state) => state.finishAnnotationDrag)
   const createAnnotations = useEditorStore((state) => state.createAnnotations)
   const startRef = useRef<Point | null>(null)
   const pointsRef = useRef<Array<Point>>([])
+  const marqueeRef = useRef<{ pointerId: number; start: Point; moved: boolean } | null>(null)
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; ids: Array<string> } | null>(null)
   const [draftEnd, setDraftEnd] = useState<Point | null>(null)
+  const [selectionEnd, setSelectionEnd] = useState<Point | null>(null)
   const isDirectTool = ['ink', 'rectangle', 'ellipse', 'line', 'arrow', 'text', 'note'].includes(tool)
   const pageAnnotations = useMemo(
-    () =>
-      annotations.filter(
-        (annotation) =>
-          annotation.pageNumber === pageNumber && annotation.kind !== 'note' && annotation.kind !== 'text',
-      ),
+    () => annotations.filter((annotation) => annotation.pageNumber === pageNumber),
     [annotations, pageNumber],
+  )
+  const drawableAnnotations = useMemo(
+    () => pageAnnotations.filter((annotation) => annotation.kind !== 'note' && annotation.kind !== 'text'),
+    [pageAnnotations],
   )
 
   const constrainedEnd = (start: Point, end: Point, event: PointerEvent<SVGSVGElement>) => {
@@ -163,12 +195,64 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
     }
   }
 
-  const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
-    if (!isDirectTool) {
-      if (tool === 'select') setSelected(null)
+  const clampDragDelta = (ids: Array<string>, dx: number, dy: number) => {
+    const selected = pageAnnotations.filter((annotation) => ids.includes(annotation.id))
+    const bounds = selected.map(annotationBounds).filter((value): value is NonNullable<typeof value> => value !== null)
+    if (!bounds.length) return { dx, dy }
+    const minX = Math.min(...bounds.map((bound) => bound.x))
+    const minY = Math.min(...bounds.map((bound) => bound.y))
+    const maxX = Math.max(...bounds.map((bound) => bound.x + bound.width))
+    const maxY = Math.max(...bounds.map((bound) => bound.y + bound.height))
+    return {
+      dx: Math.max(-minX, Math.min(1 - maxX, dx)),
+      dy: Math.max(-minY, Math.min(1 - maxY, dy)),
+    }
+  }
+
+  const handleAnnotationPointerDown = (event: PointerEvent<SVGGElement>, id: string) => {
+    event.stopPropagation()
+    if (tool !== 'select') {
+      setSelected(id)
       return
     }
-    const point = asPoint(event)
+    const ids = selectedIds.includes(id) ? selectedIds : [id]
+    if (!selectedIds.includes(id)) setSelectedAnnotations([id])
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, ids }
+    beginAnnotationDrag(ids)
+  }
+
+  const handleAnnotationPointerMove = (event: PointerEvent<SVGGElement>) => {
+    const drag = dragRef.current
+    const svg = svgRef.current
+    if (!drag || drag.pointerId !== event.pointerId || !svg) return
+    const rect = svg.getBoundingClientRect()
+    const next = clampDragDelta(drag.ids, (event.clientX - drag.startX) / rect.width, (event.clientY - drag.startY) / rect.height)
+    event.preventDefault()
+    updateAnnotationDrag(next.dx, next.dy)
+  }
+
+  const handleAnnotationPointerUp = (event: PointerEvent<SVGGElement>) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    dragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    void finishAnnotationDrag()
+  }
+
+  const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (tool === 'select') {
+      const svg = event.currentTarget
+      const start = asPoint(event, svg)
+      event.preventDefault()
+      svg.setPointerCapture(event.pointerId)
+      marqueeRef.current = { pointerId: event.pointerId, start, moved: false }
+      setSelectionEnd(start)
+      return
+    }
+    if (!isDirectTool) return
+    const point = asPoint(event, event.currentTarget)
     if (tool === 'note' || tool === 'text') {
       void createAtPoint(point)
       return
@@ -180,15 +264,45 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
   }
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    const marquee = marqueeRef.current
+    if (marquee?.pointerId === event.pointerId) {
+      const point = asPoint(event, event.currentTarget)
+      if (Math.abs(point.x - marquee.start.x) > 0.002 || Math.abs(point.y - marquee.start.y) > 0.002) marquee.moved = true
+      setSelectionEnd(point)
+      return
+    }
     if (!startRef.current) return
-    const point = asPoint(event)
+    const point = asPoint(event, event.currentTarget)
     if (tool === 'ink') pointsRef.current.push(point)
     setDraftEnd(constrainedEnd(startRef.current, point, event))
   }
 
   const handlePointerUp = async (event: PointerEvent<SVGSVGElement>) => {
+    const marquee = marqueeRef.current
+    if (marquee?.pointerId === event.pointerId) {
+      const end = asPoint(event, event.currentTarget)
+      const selection = boundsBetween(marquee.start, end)
+      marqueeRef.current = null
+      setSelectionEnd(null)
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+      if (!marquee.moved) {
+        setSelected(null)
+        return
+      }
+      const selected = pageAnnotations
+        .filter((annotation) => {
+          const bounds = annotationBounds(annotation)
+          return bounds && bounds.x >= selection.x && bounds.y >= selection.y &&
+            bounds.x + bounds.width <= selection.x + selection.width &&
+            bounds.y + bounds.height <= selection.y + selection.height
+        })
+        .map((annotation) => annotation.id)
+      setSelectedAnnotations(selected)
+      return
+    }
+
     const start = startRef.current
-    const pointer = asPoint(event)
+    const pointer = asPoint(event, event.currentTarget)
     const end = start ? constrainedEnd(start, pointer, event) : pointer
     startRef.current = null
     setDraftEnd(null)
@@ -198,12 +312,7 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
     if (tool === 'ink' && pointsRef.current.length > 1) {
       await createAnnotations([{ ...base, kind: 'ink', strokes: [pointsRef.current] }], 'Draw ink')
     } else if (['rectangle', 'ellipse'].includes(tool)) {
-      const bounds = {
-        x: Math.min(start.x, end.x),
-        y: Math.min(start.y, end.y),
-        width: Math.abs(end.x - start.x),
-        height: Math.abs(end.y - start.y),
-      }
+      const bounds = boundsBetween(start, end)
       if (bounds.width > 0.004 && bounds.height > 0.004) {
         await createAnnotations([{ ...base, kind: 'shape', shape: tool as 'rectangle' | 'ellipse', bounds }], `Add ${tool}`)
       }
@@ -213,27 +322,32 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
     pointsRef.current = []
   }
 
-  const draftBounds = startRef.current && draftEnd
-    ? {
-        x: Math.min(startRef.current.x, draftEnd.x),
-        y: Math.min(startRef.current.y, draftEnd.y),
-        width: Math.abs(draftEnd.x - startRef.current.x),
-        height: Math.abs(draftEnd.y - startRef.current.y),
-      }
-    : null
+  const draftBounds = startRef.current && draftEnd ? boundsBetween(startRef.current, draftEnd) : null
+  const selectionBounds = marqueeRef.current && selectionEnd ? boundsBetween(marqueeRef.current.start, selectionEnd) : null
 
   return (
     <svg
-      className={`annotation-layer ${isDirectTool ? 'is-drawing' : ''}`}
+      ref={svgRef}
+      className={`annotation-layer ${isDirectTool ? 'is-drawing' : ''} ${tool === 'select' ? 'is-selecting' : ''}`}
       viewBox="0 0 1 1"
       preserveAspectRatio="none"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={(event) => void handlePointerUp(event)}
+      onPointerCancel={(event) => void handlePointerUp(event)}
     >
-      {pageAnnotations.map((annotation) => (
-        <AnnotationGlyph key={annotation.id} annotation={annotation} selected={selectedId === annotation.id} />
+      {drawableAnnotations.map((annotation) => (
+        <AnnotationGlyph
+          key={annotation.id}
+          annotation={annotation}
+          selected={selectedIds.includes(annotation.id)}
+          dragOffset={annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null}
+          onPointerDown={handleAnnotationPointerDown}
+          onPointerMove={handleAnnotationPointerMove}
+          onPointerUp={handleAnnotationPointerUp}
+        />
       ))}
+      {selectionBounds && <rect className="annotation-marquee" {...selectionBounds} />}
       {draftBounds && (tool === 'rectangle' || tool === 'ellipse') &&
         (tool === 'rectangle' ? (
           <rect className="annotation-draft" {...draftBounds} stroke={color} />

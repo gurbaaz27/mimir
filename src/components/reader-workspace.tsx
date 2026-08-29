@@ -39,6 +39,7 @@ export function ReaderWorkspace() {
   const history = useEditorStore((state) => state.history)
   const future = useEditorStore((state) => state.future)
   const selectedId = useEditorStore((state) => state.selectedAnnotationId)
+  const selectedIds = useEditorStore((state) => state.selectedAnnotationIds)
   const setSelected = useEditorStore((state) => state.setSelectedAnnotation)
   const closeDocument = useEditorStore((state) => state.closeDocument)
   const setCurrentPage = useEditorStore((state) => state.setCurrentPage)
@@ -151,7 +152,7 @@ export function ReaderWorkspace() {
       } else if ((event.metaKey || event.ctrlKey) && key === 'f') {
         event.preventDefault()
         setSearchOpen(true)
-      } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) {
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId && selectedIds.length === 1) {
         event.preventDefault()
         void deleteAnnotations([selectedId])
       } else if (event.shiftKey && key === 's') {
@@ -173,7 +174,7 @@ export function ReaderWorkspace() {
       window.removeEventListener('keyup', keyup)
       window.removeEventListener('blur', restoreTemporaryPan)
     }
-  }, [deleteAnnotations, redo, selectedId, setSearchOpen, setTool, undo])
+  }, [deleteAnnotations, redo, selectedId, selectedIds.length, setSearchOpen, setTool, undo])
 
   useEffect(() => {
     return () => {

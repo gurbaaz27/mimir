@@ -7,8 +7,11 @@ import type { OutlineEntry } from './pdf.client'
 import { getDocumentSlug } from './document-route'
 import {
   annotationSchema,
+  annotationBounds,
+  translateAnnotation,
   type Annotation,
   type AnnotationAuthor,
+  type AnnotationPatch,
   type MarkupType,
   type ShapeType,
 } from './annotations'
@@ -28,6 +31,12 @@ interface HistoryEntry {
   after: Array<Annotation>
 }
 
+interface AnnotationDrag {
+  ids: Array<string>
+  dx: number
+  dy: number
+}
+
 interface EditorState {
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: string | null
@@ -36,6 +45,8 @@ interface EditorState {
   annotations: Array<Annotation>
   outline: Array<OutlineEntry> | null
   selectedAnnotationId: string | null
+  selectedAnnotationIds: Array<string>
+  annotationDrag: AnnotationDrag | null
   tool: EditorTool
   color: string
   currentPage: number
@@ -58,6 +69,10 @@ interface EditorState {
   setZoom: (zoom: number) => void
   setRotation: (rotation: number) => void
   setSelectedAnnotation: (id: string | null) => void
+  setSelectedAnnotations: (ids: Array<string>) => void
+  beginAnnotationDrag: (ids: Array<string>) => void
+  updateAnnotationDrag: (dx: number, dy: number) => void
+  finishAnnotationDrag: () => Promise<void>
   setSidebarOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
   notify: (message: string) => void
@@ -70,11 +85,18 @@ interface EditorState {
     annotations: Array<Annotation>,
     label?: string,
   ) => Promise<void>
+  updateAnnotations: (
+    ids: Array<string>,
+    patch: AnnotationPatch,
+    author?: AnnotationAuthor,
+    label?: string,
+  ) => Promise<void>
   updateAnnotation: (
     id: string,
-    patch: Partial<Annotation>,
+    patch: AnnotationPatch,
     author?: AnnotationAuthor,
   ) => Promise<Annotation>
+  moveAnnotations: (ids: Array<string>, dx: number, dy: number) => Promise<void>
   deleteAnnotations: (ids: Array<string>, label?: string) => Promise<void>
   undo: () => Promise<void>
   redo: () => Promise<void>
@@ -136,6 +158,8 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   annotations: [],
   outline: null,
   selectedAnnotationId: null,
+  selectedAnnotationIds: [],
+  annotationDrag: null,
   tool: 'select',
   color: '#f5c84b',
   currentPage: 1,
@@ -218,6 +242,8 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       zoom: document.zoom,
       rotation: document.rotation,
       selectedAnnotationId: null,
+      selectedAnnotationIds: [],
+      annotationDrag: null,
       history: [],
       future: [],
     })
@@ -245,6 +271,8 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       annotations: [],
       outline: null,
       selectedAnnotationId: null,
+      selectedAnnotationIds: [],
+      annotationDrag: null,
       history: [],
       future: [],
     })
@@ -260,7 +288,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
     await get().loadLibrary()
   },
 
-  setTool: (tool) => set({ tool }),
+  setTool: (tool) => set({ tool, annotationDrag: null }),
   setColor: (color) => set({ color }),
   setCurrentPage: (currentPage) => {
     const pageCount = get().activeDocument?.pageCount ?? 1
@@ -268,7 +296,37 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   },
   setZoom: (zoom) => set({ zoom: Math.max(0.5, Math.min(3, zoom)) }),
   setRotation: (rotation) => set({ rotation: ((rotation % 360) + 360) % 360 }),
-  setSelectedAnnotation: (selectedAnnotationId) => set({ selectedAnnotationId }),
+  setSelectedAnnotation: (selectedAnnotationId) =>
+    set({
+      selectedAnnotationId,
+      selectedAnnotationIds: selectedAnnotationId ? [selectedAnnotationId] : [],
+      annotationDrag: null,
+    }),
+  setSelectedAnnotations: (ids) => {
+    const uniqueIds = [...new Set(ids)]
+    set({
+      selectedAnnotationIds: uniqueIds,
+      selectedAnnotationId: uniqueIds[0] ?? null,
+      annotationDrag: null,
+    })
+  },
+  beginAnnotationDrag: (ids) => {
+    const uniqueIds = [...new Set(ids)]
+    if (uniqueIds.length) set({ annotationDrag: { ids: uniqueIds, dx: 0, dy: 0 } })
+  },
+  updateAnnotationDrag: (dx, dy) =>
+    set((state) => state.annotationDrag ? { annotationDrag: { ...state.annotationDrag, dx, dy } } : state),
+  finishAnnotationDrag: async () => {
+    const drag = get().annotationDrag
+    if (!drag) return
+    try {
+      if (Math.abs(drag.dx) > 0.0001 || Math.abs(drag.dy) > 0.0001) {
+        await get().moveAnnotations(drag.ids, drag.dx, drag.dy)
+      }
+    } finally {
+      set({ annotationDrag: null })
+    }
+  },
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   notify: (toast) => {
@@ -291,22 +349,58 @@ export const editorStore = createStore<EditorState>((set, get) => ({
 
   createAnnotations: async (annotations, label = 'Add annotation') => {
     await get().commit([], annotations, label)
-    if (annotations.length === 1) set({ selectedAnnotationId: annotations[0]?.id ?? null })
+    if (annotations.length === 1) {
+      const id = annotations[0]?.id ?? null
+      set({ selectedAnnotationId: id, selectedAnnotationIds: id ? [id] : [] })
+    }
+  },
+
+  updateAnnotations: async (ids, patch, author = 'human', label = 'Edit annotations') => {
+    const idSet = new Set(ids)
+    const before = get().annotations.filter((annotation) => idSet.has(annotation.id))
+    if (!before.length) throw new Error('No matching annotations were found.')
+    const after = before.map((annotation) => {
+      const style = patch.style ? { ...annotation.style, ...patch.style } : annotation.style
+      return annotationSchema.parse({
+        ...annotation,
+        ...patch,
+        style,
+        id: annotation.id,
+        documentId: annotation.documentId,
+        lastModifiedBy: author,
+        updatedAt: new Date().toISOString(),
+      })
+    })
+    await get().commit(before, after, label)
   },
 
   updateAnnotation: async (id, patch, author = 'human') => {
-    const before = get().annotations.find((annotation) => annotation.id === id)
-    if (!before) throw new Error(`Annotation ${id} was not found.`)
-    const after = annotationSchema.parse({
-      ...before,
-      ...patch,
-      id: before.id,
-      documentId: before.documentId,
-      lastModifiedBy: author,
-      updatedAt: new Date().toISOString(),
-    })
-    await get().commit([before], [after], 'Edit annotation')
-    return after
+    await get().updateAnnotations([id], patch, author, 'Edit annotation')
+    const updated = get().annotations.find((annotation) => annotation.id === id)
+    if (!updated) throw new Error(`Annotation ${id} was not found.`)
+    return updated
+  },
+
+  moveAnnotations: async (ids, dx, dy) => {
+    const idSet = new Set(ids)
+    const before = get().annotations.filter((annotation) => idSet.has(annotation.id))
+    if (!before.length) throw new Error('No matching annotations were found.')
+    const bounds = before.map(annotationBounds).filter((value): value is NonNullable<typeof value> => value !== null)
+    const minX = bounds.length ? Math.min(...bounds.map((bound) => bound.x)) : 0
+    const minY = bounds.length ? Math.min(...bounds.map((bound) => bound.y)) : 0
+    const maxX = bounds.length ? Math.max(...bounds.map((bound) => bound.x + bound.width)) : 1
+    const maxY = bounds.length ? Math.max(...bounds.map((bound) => bound.y + bound.height)) : 1
+    const actualDx = Math.max(-minX, Math.min(1 - maxX, dx))
+    const actualDy = Math.max(-minY, Math.min(1 - maxY, dy))
+    if (!actualDx && !actualDy) return
+    const after = before.map((annotation) =>
+      annotationSchema.parse({
+        ...translateAnnotation(annotation, actualDx, actualDy),
+        lastModifiedBy: 'human',
+        updatedAt: new Date().toISOString(),
+      }),
+    )
+    await get().commit(before, after, 'Move annotations')
   },
 
   deleteAnnotations: async (ids, label = 'Delete annotation') => {
@@ -314,8 +408,13 @@ export const editorStore = createStore<EditorState>((set, get) => ({
     const before = get().annotations.filter((annotation) => idSet.has(annotation.id))
     if (!before.length) throw new Error('No matching annotations were found.')
     await get().commit(before, [], label)
-    if (get().selectedAnnotationId && idSet.has(get().selectedAnnotationId!)) {
-      set({ selectedAnnotationId: null })
+    const remainingSelectedIds = get().selectedAnnotationIds.filter((id) => !idSet.has(id))
+    if (remainingSelectedIds.length !== get().selectedAnnotationIds.length) {
+      set({
+        selectedAnnotationIds: remainingSelectedIds,
+        selectedAnnotationId: remainingSelectedIds[0] ?? null,
+        annotationDrag: null,
+      })
     }
   },
 
