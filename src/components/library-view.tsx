@@ -155,7 +155,7 @@ export function LibraryView() {
               <span className="mark-note">sticky notes</span> as you read.
             </span>
             <span className="pitch-line">
-              Or ask your{' '}
+              Or just ask your{' '}
               <span className="mark-agent">
                 <Openai className="mark-agent-glyph" fill="currentColor" />
                 agent
