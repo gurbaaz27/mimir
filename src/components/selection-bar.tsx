@@ -1,18 +1,13 @@
 import { Tooltip } from 'radix-ui'
 import { CheckIcon, TrashIcon } from '#/components/icons'
 import type { Annotation } from '#/lib/annotations'
-import { annotationColors } from '#/lib/annotations'
+import { annotationColors, annotationLabel } from '#/lib/annotations'
 import { useEditorStore } from '#/lib/editor-store.client'
 import { IconButton } from './ui'
 
-function annotationLabel(annotation: Annotation) {
-  const name =
-    annotation.kind === 'markup'
-      ? annotation.markup
-      : annotation.kind === 'shape'
-        ? annotation.shape
-        : annotation.kind
-  return name === 'strikeout' ? 'Strikeout' : name[0]?.toUpperCase() + name.slice(1)
+function titleCase(annotation: Annotation) {
+  const name = annotationLabel(annotation)
+  return name[0]?.toUpperCase() + name.slice(1)
 }
 
 /**
@@ -32,7 +27,7 @@ export function SelectionBar() {
     <Tooltip.Provider>
       <div className="selection-bar" role="group" aria-label="Selected annotation">
         <span>
-          <b>{annotationLabel(annotation)}</b> · page {annotation.pageNumber}
+          <b>{titleCase(annotation)}</b> · page {annotation.pageNumber}
         </span>
         <div className="selection-swatches">
           {annotationColors.map((item) => (

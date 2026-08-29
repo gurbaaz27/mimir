@@ -182,3 +182,55 @@ export function annotationBounds(annotation: Annotation): NormalizedRect | null 
       return { x: annotation.point.x, y: annotation.point.y, width: 0.03, height: 0.03 }
   }
 }
+
+/**
+ * The kind of mark this is, in the words a reader would use for it. Shapes and
+ * markup carry their own subtype, so those win over the structural kind.
+ */
+export function annotationLabel(annotation: Annotation) {
+  if (annotation.kind === 'markup') return annotation.markup
+  if (annotation.kind === 'shape') return annotation.shape
+  return annotation.kind
+}
+
+/** The readable body of a mark, if it has one. */
+export function annotationText(annotation: Annotation) {
+  if (annotation.kind === 'markup') return annotation.selectedText
+  if (annotation.kind === 'text' || annotation.kind === 'note') return annotation.body
+  return null
+}
+
+export interface AnnotationSummary {
+  id: string
+  kind: AnnotationKind
+  label: string
+  pageNumber: number
+  text: string | null
+  truncated: boolean
+  color: string
+  createdBy: AnnotationAuthor
+  updatedAt: string
+  resolved?: boolean
+}
+
+/**
+ * A compact view of a mark for agents and lists. Geometry — quads, ink strokes,
+ * bounds — is deliberately omitted: it is large, and nothing outside the
+ * renderer can act on it. Ask for the full record when you need it.
+ */
+export function annotationSummary(annotation: Annotation, maxTextLength = 280): AnnotationSummary {
+  const text = annotationText(annotation)
+  const truncated = text !== null && text.length > maxTextLength
+  return {
+    id: annotation.id,
+    kind: annotation.kind,
+    label: annotationLabel(annotation),
+    pageNumber: annotation.pageNumber,
+    text: truncated ? `${text.slice(0, maxTextLength)}…` : text,
+    truncated,
+    color: annotation.style.color,
+    createdBy: annotation.createdBy,
+    updatedAt: annotation.updatedAt,
+    ...(annotation.kind === 'note' ? { resolved: annotation.resolved } : {}),
+  }
+}

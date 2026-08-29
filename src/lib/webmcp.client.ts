@@ -1,105 +1,149 @@
 import '@tanstack/react-start/client-only'
-import { useEffect, useState } from 'react'
-import { z } from 'zod'
+import { useEffect, useRef, useState } from 'react'
+import type { z } from 'zod'
 import {
+  annotationBounds,
+  annotationLabel,
   annotationSchema,
   createAnnotationBase,
-  pointSchema,
-  quoteAnchorSchema,
-  rectSchema,
   type Annotation,
-  type AnnotationStyle,
+  type QuoteAnchor,
 } from './annotations'
 import { db } from './db.client'
+import { getDocumentPathSegment } from './document-route'
 import { editorStore } from './editor-store.client'
 import { searchDocumentText } from './search.client'
+import {
+  annotationContextInput,
+  annotationSummary,
+  applicableFields,
+  createAnnotationsInput,
+  defaultStyle,
+  deleteAnnotationsInput,
+  emptyInputSchema,
+  exportInput,
+  formatToolError,
+  listAnnotationsInput,
+  listDocumentsInput,
+  navigateInput,
+  openDocumentInput,
+  partitionDeletable,
+  readTextInput,
+  searchInput,
+  toJsonSchema,
+  ToolError,
+  updateAnnotationsInput,
+} from './webmcp-contract'
 
-const styleInputSchema = z
-  .object({
-    color: z.string().optional(),
-    opacity: z.number().min(0.05).max(1).optional(),
-    strokeWidth: z.number().min(0.5).max(20).optional(),
-    fill: z.string().optional(),
-    fontSize: z.number().min(8).max(72).optional(),
-  })
-  .optional()
+/** Navigates the app to a document's reader route. Supplied by the mounting component. */
+export type OpenDocumentNavigator = (pathSegment: string) => void | Promise<void>
 
-const createInputSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('markup'),
-    pageNumber: z.number().int().positive(),
-    markup: z.enum(['highlight', 'underline', 'strikeout']),
-    target: quoteAnchorSchema,
-    style: styleInputSchema,
-  }),
-  z.object({
-    kind: z.literal('note'),
-    pageNumber: z.number().int().positive(),
-    body: z.string().max(25_000),
-    point: pointSchema.optional(),
-    target: quoteAnchorSchema.optional(),
-    style: styleInputSchema,
-  }),
-  z.object({
-    kind: z.literal('text'),
-    pageNumber: z.number().int().positive(),
-    body: z.string().max(10_000),
-    bounds: rectSchema,
-    style: styleInputSchema,
-  }),
-  z.object({
-    kind: z.literal('shape'),
-    pageNumber: z.number().int().positive(),
-    shape: z.enum(['rectangle', 'ellipse', 'line', 'arrow']),
-    bounds: rectSchema.optional(),
-    start: pointSchema.optional(),
-    end: pointSchema.optional(),
-    style: styleInputSchema,
-  }),
-  z.object({
-    kind: z.literal('ink'),
-    pageNumber: z.number().int().positive(),
-    strokes: z.array(z.array(pointSchema).min(2)).min(1),
-    style: styleInputSchema,
-  }),
-])
+interface ToolDefinition<Schema extends z.ZodType> {
+  name: string
+  title: string
+  description: string
+  schema: Schema
+  readOnly: boolean
+  execute: (input: z.output<Schema>, options: WebMCP.ToolExecuteCallbackOptions) => unknown
+}
 
-function defaultStyle(style?: z.infer<typeof styleInputSchema>): AnnotationStyle {
+/**
+ * Build a tool whose published JSON Schema is generated from the same Zod schema
+ * that validates its input, and whose failures always reach the agent as one
+ * readable sentence rather than a serialized error object.
+ */
+function tool<Schema extends z.ZodType>(definition: ToolDefinition<Schema>): WebMCP.ModelContextTool {
   return {
-    color: style?.color ?? '#159b98',
-    opacity: style?.opacity ?? 0.85,
-    strokeWidth: style?.strokeWidth ?? 2,
-    fill: style?.fill,
-    fontSize: style?.fontSize,
+    name: definition.name,
+    title: definition.title,
+    description: definition.description,
+    inputSchema: toJsonSchema(definition.schema),
+    annotations: { readOnlyHint: definition.readOnly, untrustedContentHint: true },
+    execute: async (input, options) => {
+      try {
+        return await definition.execute(definition.schema.parse(input ?? {}) as z.output<Schema>, options)
+      } catch (error) {
+        throw new Error(formatToolError(error))
+      }
+    },
   }
 }
 
-function waitForPage(pageNumber: number) {
-  editorStore.getState().setCurrentPage(pageNumber)
-  window.dispatchEvent(new CustomEvent('mimir:navigate', { detail: { pageNumber } }))
-  return new Promise<HTMLElement>((resolve, reject) => {
-    let attempts = 0
-    const findPage = () => {
-      const page = document.querySelector<HTMLElement>(`[data-page-number="${pageNumber}"]`)
-      if (page?.querySelector('.textLayer span')) {
-        resolve(page)
+const state = () => editorStore.getState()
+
+function plural(count: number, noun: string) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
+const POLL_INTERVAL = 80
+const POLL_ATTEMPTS = 30
+
+function pollFor<T>(find: () => T | null | undefined, onTimeout: () => Error, attempts = POLL_ATTEMPTS) {
+  return new Promise<T>((resolve, reject) => {
+    let remaining = attempts
+    const tick = () => {
+      const found = find()
+      if (found) {
+        resolve(found)
         return
       }
-      attempts += 1
-      if (attempts > 25) {
-        reject(new Error(`Page ${pageNumber} is not ready for text anchoring.`))
+      remaining -= 1
+      if (remaining <= 0) {
+        reject(onTimeout())
         return
       }
-      window.setTimeout(findPage, 80)
+      window.setTimeout(tick, POLL_INTERVAL)
     }
-    findPage()
+    tick()
   })
 }
 
-async function resolveQuote(pageNumber: number, target: z.infer<typeof quoteAnchorSchema>) {
-  const page = await waitForPage(pageNumber)
+function requestPage(pageNumber: number) {
+  state().setCurrentPage(pageNumber)
+  window.dispatchEvent(new CustomEvent('mimir:navigate', { detail: { pageNumber } }))
+}
+
+/**
+ * Move the reader to a page and wait for it to mount. Deliberately does not wait
+ * for text: a scanned page never renders one, and navigation still succeeded.
+ */
+async function scrollToPage(pageNumber: number) {
+  const pageCount = state().activeDocument?.pageCount ?? 0
+  if (pageNumber > pageCount) {
+    throw new ToolError(`Page ${pageNumber} is outside this PDF, which has ${pageCount} pages.`)
+  }
+  requestPage(pageNumber)
+  return pollFor(
+    () => document.querySelector<HTMLElement>(`[data-page-number="${pageNumber}"]`),
+    () => new ToolError(`Page ${pageNumber} did not render in time.`, 'Retry the call; a large page can take a moment.'),
+  )
+}
+
+/** Text anchoring needs the rendered text layer, so this waits for it too. */
+async function waitForTextLayer(pageNumber: number) {
+  const page = await scrollToPage(pageNumber)
+  return pollFor(
+    () => (page.querySelector('.textLayer span') ? page : null),
+    () =>
+      new ToolError(
+        `Page ${pageNumber} has no selectable text.`,
+        'It is most likely a scan. Place a note with a point instead of anchoring to a quote.',
+      ),
+  )
+}
+
+function collapseWhitespace(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Map a quote to normalized page geometry by walking the rendered text layer.
+ * A miss reports where the quote actually occurs so the agent can retry.
+ */
+async function resolveQuote(documentId: string, pageNumber: number, target: QuoteAnchor) {
+  const page = await waitForTextLayer(pageNumber)
   const layer = page.querySelector<HTMLElement>('.textLayer')
-  if (!layer) throw new Error(`Page ${pageNumber} has no selectable text.`)
+  if (!layer) throw new ToolError(`Page ${pageNumber} has no selectable text.`)
   const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
   const nodes: Array<{ node: Text; start: number; end: number }> = []
   let rawText = ''
@@ -127,13 +171,15 @@ async function resolveQuote(pageNumber: number, target: z.infer<typeof quoteAnch
     }
   }
   const haystack = normalizedText.toLocaleLowerCase()
-  const needle = target.quote.replace(/\s+/g, ' ').trim().toLocaleLowerCase()
+  const needle = collapseWhitespace(target.quote).toLocaleLowerCase()
   const matches: Array<number> = []
   let from = 0
   while (from <= haystack.length) {
     const index = haystack.indexOf(needle, from)
     if (index < 0) break
-    const prefixMatches = !target.prefix || haystack.slice(Math.max(0, index - target.prefix.length), index).endsWith(target.prefix.toLocaleLowerCase())
+    const prefixMatches =
+      !target.prefix ||
+      haystack.slice(Math.max(0, index - target.prefix.length), index).endsWith(target.prefix.toLocaleLowerCase())
     const suffixMatches =
       !target.suffix ||
       haystack
@@ -142,20 +188,39 @@ async function resolveQuote(pageNumber: number, target: z.infer<typeof quoteAnch
     if (prefixMatches && suffixMatches) matches.push(index)
     from = index + Math.max(needle.length, 1)
   }
-  if (!matches.length) throw new Error(`The quote was not found on page ${pageNumber}.`)
+
+  if (!matches.length) {
+    const elsewhere = await searchDocumentText(documentId, target.quote, 3)
+    const pages = [...new Set(elsewhere.map((result) => result.pageNumber))]
+    throw new ToolError(
+      `The quote was not found on page ${pageNumber}.`,
+      pages.length
+        ? `It appears on page ${pages.join(', ')} — retry with that pageNumber.`
+        : 'Use search_document to find the exact wording; the PDF may hyphenate or space it differently.',
+    )
+  }
+
   const occurrence = target.occurrence ?? 1
   const match = matches[occurrence - 1]
   if (match === undefined) {
-    throw new Error(`Only ${matches.length} matching quote${matches.length === 1 ? '' : 's'} were found.`)
+    throw new ToolError(
+      `Only ${plural(matches.length, 'matching quote')} ${matches.length === 1 ? 'was' : 'were'} found on page ${pageNumber}.`,
+      'Lower occurrence, or add prefix and suffix to pick the right one.',
+    )
   }
 
   const rawStart = normalizedToRaw[match]
-  const rawEnd = (normalizedToRaw[match + needle.length - 1] ?? -1) + 1
-  const startInfo = nodes.find((item) => rawStart !== undefined && item.start <= rawStart && item.end > rawStart)
+  const rawLastCharacter = normalizedToRaw[match + needle.length - 1]
+  if (rawStart === undefined || rawLastCharacter === undefined) {
+    throw new ToolError('The quote could not be mapped to page geometry.')
+  }
+  const rawEnd = rawLastCharacter + 1
+  const startInfo = nodes.find((item) => item.start <= rawStart && item.end > rawStart)
   const endInfo = nodes.find((item) => item.start < rawEnd && item.end >= rawEnd)
-  if (!startInfo || !endInfo) throw new Error('The quote could not be mapped to page geometry.')
+  if (!startInfo || !endInfo) throw new ToolError('The quote could not be mapped to page geometry.')
+
   const range = document.createRange()
-  range.setStart(startInfo.node, rawStart! - startInfo.start)
+  range.setStart(startInfo.node, rawStart - startInfo.start)
   range.setEnd(endInfo.node, rawEnd - endInfo.start)
   const pageRect = page.getBoundingClientRect()
   const quads = Array.from(range.getClientRects())
@@ -166,251 +231,611 @@ async function resolveQuote(pageNumber: number, target: z.infer<typeof quoteAnch
       width: rect.width / pageRect.width,
       height: rect.height / pageRect.height,
     }))
-  if (!quads.length) throw new Error('The quote is present but has no visible geometry.')
+  if (!quads.length) throw new ToolError('The quote is present but has no visible geometry.')
   return quads
 }
 
-function tool(
-  name: string,
-  description: string,
-  inputSchema: object,
-  readOnlyHint: boolean,
-  execute: WebMCP.ToolExecuteCallback,
-): WebMCP.ModelContextTool {
-  return {
-    name,
-    description,
-    inputSchema,
-    annotations: { readOnlyHint, untrustedContentHint: true },
-    execute,
+/* ------------------------------------------------------------------ *
+ * Library scope — registered whenever Mimir is open, document or not.
+ * ------------------------------------------------------------------ */
+
+export function libraryTools(navigator: { current?: OpenDocumentNavigator }): Array<WebMCP.ModelContextTool> {
+  const documents = async () => {
+    if (!state().documents.length) await state().loadLibrary()
+    return state().documents
   }
+
+  return [
+    tool({
+      name: 'list_documents',
+      title: 'List local documents',
+      description:
+        'List the PDFs stored in this browser. Start here: nothing else in the reader works until a document is open. Files are local to this device and are never uploaded.',
+      schema: listDocumentsInput,
+      readOnly: true,
+      execute: async (input) => {
+        const all = await documents()
+        const query = input.query?.toLocaleLowerCase()
+        const matched = query
+          ? all.filter((record) =>
+              [record.name, record.title, record.author].some((field) => field?.toLocaleLowerCase().includes(query)),
+            )
+          : all
+        const activeId = state().activeDocument?.id
+        const listed = await Promise.all(
+          matched.slice(0, input.limit).map(async (record) => ({
+            documentId: record.id,
+            name: record.name,
+            title: record.title ?? null,
+            author: record.author ?? null,
+            pageCount: record.pageCount,
+            lastPage: record.lastPage,
+            indexedPages: record.indexedPages,
+            annotations: await db.annotations.where('documentId').equals(record.id).count(),
+            lastOpenedAt: record.lastOpenedAt,
+            isOpen: record.id === activeId,
+          })),
+        )
+        return { documents: listed, total: matched.length }
+      },
+    }),
+    tool({
+      name: 'open_document',
+      title: 'Open a document',
+      description:
+        'Open a local PDF in the reader and navigate the page to it. This registers the document tools — reading, search, annotation, and export all become available once a document is open.',
+      schema: openDocumentInput,
+      readOnly: false,
+      execute: async (input) => {
+        const all = await documents()
+        if (!all.length) throw new ToolError('This browser has no documents yet.', 'The reader must add a PDF first.')
+
+        let record = input.documentId ? all.find((item) => item.id === input.documentId) : undefined
+        if (input.documentId && !record) {
+          throw new ToolError(`No document has the id ${input.documentId}.`, 'Call list_documents for current ids.')
+        }
+        if (!record) {
+          const name = input.name!.toLocaleLowerCase()
+          const candidates = all.filter((item) =>
+            [item.name, item.title].some((field) => field?.toLocaleLowerCase().includes(name)),
+          )
+          if (!candidates.length) {
+            throw new ToolError(
+              `No document matches “${input.name}”.`,
+              `Available: ${all.map((item) => item.name).join(', ')}.`,
+            )
+          }
+          if (candidates.length > 1) {
+            throw new ToolError(
+              `“${input.name}” matches ${candidates.length} documents.`,
+              `Pass documentId for one of: ${candidates.map((item) => item.name).join(', ')}.`,
+            )
+          }
+          record = candidates[0]!
+        }
+
+        await state().openDocument(record.id)
+        await navigator.current?.(getDocumentPathSegment(record))
+        return {
+          documentId: record.id,
+          name: record.name,
+          title: record.title ?? null,
+          pageCount: record.pageCount,
+          currentPage: state().currentPage,
+          indexedPages: record.indexedPages,
+        }
+      },
+    }),
+  ]
+}
+
+/* ------------------------------------------------------------------ *
+ * Document scope — registered only while a PDF is open.
+ * ------------------------------------------------------------------ */
+
+export function documentTools(documentId: string): Array<WebMCP.ModelContextTool> {
+  const currentDocument = () => {
+    const record = state().activeDocument
+    if (!record || record.id !== documentId) throw new ToolError('No active document is available.')
+    return record
+  }
+
+  const pageText = async (pageNumber: number) => (await db.textPages.get([documentId, pageNumber]))?.text ?? null
+
+  return [
+    tool({
+      name: 'get_document_context',
+      title: 'Document context',
+      description:
+        'Metadata and reading state for the open PDF, including how much of its text has been extracted. Call this first: it tells you whether the document has usable text at all, which decides whether quote-anchored tools will work.',
+      schema: emptyInputSchema,
+      readOnly: true,
+      execute: async () => {
+        const record = currentDocument()
+        const pagesWithText = await db.textPages
+          .where('documentId')
+          .equals(documentId)
+          .filter((page) => page.text.trim().length > 0)
+          .count()
+        const annotations = state().annotations
+        const outline = state().outline
+        return {
+          documentId,
+          name: record.name,
+          title: record.title ?? null,
+          author: record.author ?? null,
+          pageCount: record.pageCount,
+          currentPage: state().currentPage,
+          zoom: state().zoom,
+          text: {
+            indexedPages: record.indexedPages,
+            pagesWithText,
+            indexingComplete: record.indexedPages >= record.pageCount,
+            note:
+              record.indexedPages > 0 && pagesWithText === 0
+                ? 'No indexed page contains text; this PDF is most likely a scan. Quote anchoring will not work.'
+                : null,
+          },
+          outlineEntries: outline?.length ?? null,
+          annotations: {
+            total: annotations.length,
+            human: annotations.filter((item) => item.createdBy === 'human').length,
+            agent: annotations.filter((item) => item.createdBy === 'webmcp').length,
+          },
+          lastChange: state().history.at(-1)?.label ?? null,
+        }
+      },
+    }),
+    tool({
+      name: 'get_document_outline',
+      title: 'Document outline',
+      description:
+        'The PDF’s bookmark tree with resolved page numbers, flattened and depth-tagged. Use it to jump to a section by name instead of paging through the document. Returns an empty list when the PDF has no bookmarks.',
+      schema: emptyInputSchema,
+      readOnly: true,
+      execute: async () => {
+        const cached = state().outline ?? (await pollFor(() => state().outline, () => new Error('pending'), 12).catch(() => null))
+        if (cached) return { outline: cached, entries: cached.length }
+        const record = currentDocument()
+        const { loadPdf, readOutline } = await import('./pdf.client')
+        const pdf = await loadPdf(record.blob)
+        try {
+          const outline = await readOutline(pdf)
+          return { outline, entries: outline.length }
+        } finally {
+          await pdf.cleanup()
+        }
+      },
+    }),
+    tool({
+      name: 'read_document_text',
+      title: 'Read page text',
+      description:
+        'Read extracted text from one page or a range of pages, concatenated up to maxChars. Pages that are not yet indexed or that carry no text are reported in "skipped" rather than failing the call; follow nextPage and nextCursor to continue.',
+      schema: readTextInput,
+      readOnly: true,
+      execute: async (input) => {
+        const record = currentDocument()
+        if (input.pageNumber > record.pageCount) {
+          throw new ToolError(`Page ${input.pageNumber} is outside this PDF, which has ${record.pageCount} pages.`)
+        }
+        const endPage = Math.min(input.endPage ?? input.pageNumber, record.pageCount)
+        const pages: Array<{ pageNumber: number; text: string }> = []
+        const skipped: Array<{ pageNumber: number; reason: 'not_indexed' | 'no_text_on_page' }> = []
+        let remaining = input.maxChars
+        let cursor = input.cursor
+        let nextPage: number | null = null
+        let nextCursor: number | null = null
+
+        for (let pageNumber = input.pageNumber; pageNumber <= endPage; pageNumber += 1) {
+          if (remaining <= 0) {
+            nextPage = pageNumber
+            nextCursor = 0
+            break
+          }
+          const text = await pageText(pageNumber)
+          if (text === null) {
+            skipped.push({ pageNumber, reason: 'not_indexed' })
+            cursor = 0
+            continue
+          }
+          if (!text.length) {
+            skipped.push({ pageNumber, reason: 'no_text_on_page' })
+            cursor = 0
+            continue
+          }
+          const slice = text.slice(cursor, cursor + remaining)
+          pages.push({ pageNumber, text: slice })
+          remaining -= slice.length
+          if (cursor + slice.length < text.length) {
+            nextPage = pageNumber
+            nextCursor = cursor + slice.length
+            break
+          }
+          cursor = 0
+        }
+
+        if (!pages.length) {
+          const notIndexed = skipped.some((page) => page.reason === 'not_indexed')
+          throw new ToolError(
+            notIndexed
+              ? `Page ${input.pageNumber} has not been indexed yet (${record.indexedPages} of ${record.pageCount} pages done).`
+              : `No text was found on page ${input.pageNumber}.`,
+            notIndexed
+              ? 'Indexing runs while the document is open — retry shortly.'
+              : 'That page is most likely a scan. Try a different page, or check get_document_context.',
+          )
+        }
+
+        return {
+          pages,
+          characters: pages.reduce((total, page) => total + page.text.length, 0),
+          skipped,
+          nextPage,
+          nextCursor,
+          indexedPages: record.indexedPages,
+          pageCount: record.pageCount,
+        }
+      },
+    }),
+    tool({
+      name: 'search_document',
+      title: 'Search the document',
+      description:
+        'Find text anywhere in the indexed pages and get page-numbered snippets. Each result’s "index" is a character offset you can pass straight to read_document_text as "cursor" for that page, and its snippet wording is what create_annotations expects as a quote.',
+      schema: searchInput,
+      readOnly: true,
+      execute: async (input) => {
+        const results = await searchDocumentText(documentId, input.query, input.limit)
+        const record = currentDocument()
+        return {
+          results,
+          total: results.length,
+          indexedPages: record.indexedPages,
+          pageCount: record.pageCount,
+        }
+      },
+    }),
+    tool({
+      name: 'navigate_document',
+      title: 'Go to a page',
+      description:
+        'Scroll the reader to a page, or to the page holding an annotation and select it. This moves what the reader sees, so use it to show your work.',
+      schema: navigateInput,
+      readOnly: false,
+      execute: async (input) => {
+        const annotation = input.annotationId
+          ? state().annotations.find((item) => item.id === input.annotationId)
+          : undefined
+        if (input.annotationId && !annotation) {
+          throw new ToolError(`Annotation ${input.annotationId} was not found.`, 'Call list_annotations for current ids.')
+        }
+        const pageNumber = annotation?.pageNumber ?? input.pageNumber!
+        await scrollToPage(pageNumber)
+        if (annotation) state().setSelectedAnnotation(annotation.id)
+        return { pageNumber, annotationId: annotation?.id ?? null, pageCount: currentDocument().pageCount }
+      },
+    }),
+    tool({
+      name: 'list_annotations',
+      title: 'List annotations',
+      description:
+        'List the marks in this PDF, newest schema first, with optional page, kind, and author filters. Summaries omit geometry and stay small; ask for detail "full" only when you need quads, ink strokes, or bounds.',
+      schema: listAnnotationsInput,
+      readOnly: true,
+      execute: (input) => {
+        const filtered = state().annotations.filter(
+          (annotation) =>
+            (!input.pageNumber || annotation.pageNumber === input.pageNumber) &&
+            (!input.kind || annotation.kind === input.kind) &&
+            (!input.createdBy || annotation.createdBy === input.createdBy),
+        )
+        const page = filtered.slice(input.cursor, input.cursor + input.limit)
+        return {
+          annotations: input.detail === 'full' ? page : page.map((annotation) => annotationSummary(annotation)),
+          total: filtered.length,
+          nextCursor: input.cursor + input.limit < filtered.length ? input.cursor + input.limit : null,
+        }
+      },
+    }),
+    tool({
+      name: 'get_annotation_context',
+      title: 'Annotation context',
+      description:
+        'Read the page text surrounding one annotation, so you can explain, summarise, or reply to a mark without re-reading the page.',
+      schema: annotationContextInput,
+      readOnly: true,
+      execute: async (input) => {
+        const annotation = state().annotations.find((item) => item.id === input.annotationId)
+        if (!annotation) {
+          throw new ToolError(`Annotation ${input.annotationId} was not found.`, 'Call list_annotations for current ids.')
+        }
+        const summary = annotationSummary(annotation)
+        const raw = await pageText(annotation.pageNumber)
+        if (!raw) {
+          return { annotation: summary, context: null, reason: raw === null ? 'not_indexed' : 'no_text_on_page' }
+        }
+
+        const text = collapseWhitespace(raw)
+        const quote = annotation.kind === 'markup' ? collapseWhitespace(annotation.selectedText) : null
+        const quoteIndex = quote ? text.toLocaleLowerCase().indexOf(quote.toLocaleLowerCase()) : -1
+        const window = input.contextChars
+
+        if (quote && quoteIndex >= 0) {
+          return {
+            annotation: summary,
+            locatedBy: 'quote' as const,
+            context: {
+              before: text.slice(Math.max(0, quoteIndex - window), quoteIndex),
+              match: text.slice(quoteIndex, quoteIndex + quote.length),
+              after: text.slice(quoteIndex + quote.length, quoteIndex + quote.length + window),
+            },
+          }
+        }
+
+        const bounds = annotationBounds(annotation)
+        const estimate = Math.floor((bounds ? bounds.y + bounds.height / 2 : 0) * text.length)
+        return {
+          annotation: summary,
+          locatedBy: 'position' as const,
+          context: {
+            before: text.slice(Math.max(0, estimate - window), estimate),
+            match: null,
+            after: text.slice(estimate, estimate + window),
+          },
+        }
+      },
+    }),
+    tool({
+      name: 'create_annotations',
+      title: 'Create annotations',
+      description:
+        'Add up to 20 marks in one reversible step. Prefer quote anchoring for markup and notes — it survives zoom and reflow — and fall back to normalized 0–1 coordinates for shapes, ink, and free-floating notes. Items that fail are reported individually; the rest still land.',
+      schema: createAnnotationsInput,
+      readOnly: false,
+      execute: async (input) => {
+        const record = currentDocument()
+        const created: Array<Annotation> = []
+        const failed: Array<{ index: number; reason: string }> = []
+
+        for (const [index, item] of input.annotations.entries()) {
+          try {
+            if (item.pageNumber > record.pageCount) {
+              throw new ToolError(`Page ${item.pageNumber} is outside this PDF, which has ${record.pageCount} pages.`)
+            }
+            const base = createAnnotationBase(documentId, item.pageNumber, 'webmcp', defaultStyle(item.style))
+            if (item.kind === 'markup') {
+              const quads = await resolveQuote(documentId, item.pageNumber, item.target)
+              created.push(
+                annotationSchema.parse({
+                  ...base,
+                  kind: 'markup',
+                  markup: item.markup,
+                  selectedText: item.target.quote,
+                  quoteAnchor: item.target,
+                  quads,
+                }),
+              )
+            } else if (item.kind === 'note') {
+              const quads = item.target ? await resolveQuote(documentId, item.pageNumber, item.target) : null
+              const point = item.point ?? (quads?.[0] ? { x: quads[0].x + quads[0].width, y: quads[0].y } : undefined)
+              if (!point) throw new ToolError('A note needs a point or a quote target.')
+              created.push(annotationSchema.parse({ ...base, kind: 'note', point, body: item.body, resolved: false }))
+            } else if (item.kind === 'text') {
+              created.push(
+                annotationSchema.parse({ ...base, kind: 'text', bounds: item.bounds, body: item.body, alignment: 'left' }),
+              )
+            } else if (item.kind === 'shape') {
+              if (!item.bounds && !(item.start && item.end)) {
+                throw new ToolError('A shape needs bounds, or start and end points.')
+              }
+              created.push(
+                annotationSchema.parse({
+                  ...base,
+                  kind: 'shape',
+                  shape: item.shape,
+                  bounds: item.bounds,
+                  start: item.start,
+                  end: item.end,
+                }),
+              )
+            } else {
+              created.push(annotationSchema.parse({ ...base, kind: 'ink', strokes: item.strokes }))
+            }
+          } catch (error) {
+            failed.push({ index, reason: formatToolError(error) })
+          }
+        }
+
+        if (!created.length) {
+          throw new ToolError(
+            'No annotations were created.',
+            failed.map((failure) => `[${failure.index}] ${failure.reason}`).join(' '),
+          )
+        }
+
+        await state().createAnnotations(created, `Add ${plural(created.length, 'agent annotation')}`)
+        state().notify(`Agent added ${plural(created.length, 'annotation')} · Undo available`)
+        window.dispatchEvent(new CustomEvent('mimir:navigate', { detail: { pageNumber: created[0]?.pageNumber } }))
+        return {
+          created: created.map((annotation) => ({
+            id: annotation.id,
+            kind: annotation.kind,
+            pageNumber: annotation.pageNumber,
+          })),
+          failed,
+        }
+      },
+    }),
+    tool({
+      name: 'update_annotations',
+      title: 'Update annotations',
+      description:
+        'Change the text, resolved state, or style of existing marks. All of them land as one undo step. body applies to text and note annotations, resolved only to notes; an update naming a field its annotation does not have is rejected outright rather than silently ignored.',
+      schema: updateAnnotationsInput,
+      readOnly: false,
+      execute: async (input) => {
+        currentDocument()
+        const before: Array<Annotation> = []
+        const after: Array<Annotation> = []
+        const updated: Array<{ id: string; changed: Array<string> }> = []
+        const failed: Array<{ id: string; reason: string }> = []
+        const now = new Date().toISOString()
+
+        for (const update of input.updates) {
+          const existing = state().annotations.find((annotation) => annotation.id === update.id)
+          if (!existing) {
+            failed.push({ id: update.id, reason: 'No annotation has this id.' })
+            continue
+          }
+          const allowed = applicableFields(existing)
+          const rejected: Array<string> = []
+          const patch: Record<string, unknown> = {}
+          if (update.body !== undefined) {
+            if (allowed.body) patch.body = update.body
+            else rejected.push('body')
+          }
+          if (update.resolved !== undefined) {
+            if (allowed.resolved) patch.resolved = update.resolved
+            else rejected.push('resolved')
+          }
+          if (update.style) patch.style = { ...existing.style, ...update.style }
+
+          if (rejected.length) {
+            failed.push({
+              id: update.id,
+              reason: `A ${annotationLabel(existing)} annotation has no ${rejected.join(' or ')} field, so nothing was changed.`,
+            })
+            continue
+          }
+          if (!Object.keys(patch).length) {
+            failed.push({ id: update.id, reason: 'No supported fields were provided.' })
+            continue
+          }
+
+          before.push(existing)
+          after.push(
+            annotationSchema.parse({ ...existing, ...patch, lastModifiedBy: 'webmcp', updatedAt: now }),
+          )
+          updated.push({ id: update.id, changed: Object.keys(patch) })
+        }
+
+        if (!after.length) {
+          throw new ToolError(
+            'No annotations were updated.',
+            failed.map((failure) => `${failure.id}: ${failure.reason}`).join(' '),
+          )
+        }
+
+        await state().commit(before, after, `Update ${plural(after.length, 'agent annotation')}`)
+        state().notify(`Agent updated ${plural(after.length, 'annotation')} · Undo available`)
+        return { updated, failed }
+      },
+    }),
+    tool({
+      name: 'delete_annotations',
+      title: 'Delete annotations',
+      description:
+        'Remove marks you created, as one undo step. The reader’s own annotations are skipped unless includeHumanAnnotations is true — do not set it without being asked to.',
+      schema: deleteAnnotationsInput,
+      readOnly: false,
+      execute: async (input) => {
+        currentDocument()
+        const { deletable, skipped } = partitionDeletable(
+          state().annotations,
+          input.ids,
+          input.includeHumanAnnotations,
+        )
+        if (!deletable.length) {
+          const humanOnly = skipped.every((entry) => entry.reason === 'created_by_human')
+          throw new ToolError(
+            'No annotations were deleted.',
+            humanOnly
+              ? 'All of them were made by the reader. Ask before passing includeHumanAnnotations.'
+              : 'None of those ids exist — call list_annotations for current ids.',
+          )
+        }
+        const ids = deletable.map((annotation) => annotation.id)
+        await state().deleteAnnotations(ids, `Delete ${plural(ids.length, 'agent annotation')}`)
+        state().notify(`Agent deleted ${plural(ids.length, 'annotation')} · Undo available`)
+        return { deleted: ids, skipped }
+      },
+    }),
+    tool({
+      name: 'undo_last_change',
+      title: 'Undo the last change',
+      description:
+        'Revert the most recent annotation change in this session — the same action as the reader’s undo, so it may undo their edit rather than yours. Check lastChange from get_document_context first if you are unsure.',
+      schema: emptyInputSchema,
+      readOnly: false,
+      execute: async () => {
+        currentDocument()
+        const entry = state().history.at(-1)
+        if (!entry) return { undone: null, message: 'There is nothing to undo.' }
+        await state().undo()
+        return { undone: entry.label, remainingHistory: state().history.length }
+      },
+    }),
+    tool({
+      name: 'prepare_export',
+      title: 'Prepare an export',
+      description:
+        'Open the export panel for the reader to confirm. This never writes a file on its own: the reader must click save, so report that the export is waiting on them.',
+      schema: exportInput,
+      readOnly: false,
+      execute: (input) => {
+        currentDocument()
+        const annotations = state().annotations
+        window.dispatchEvent(new CustomEvent('mimir:prepare-export', { detail: input }))
+        return {
+          format: input.format,
+          annotations: annotations.length,
+          notes: annotations.filter((annotation) => annotation.kind === 'note').length,
+          awaitingUserSave: true,
+        }
+      },
+    }),
+  ]
 }
 
 export type WebMcpStatus = 'available' | 'unavailable' | 'registering'
 
-export function useWebMcp(documentId: string | null) {
+/**
+ * Register Mimir's tools in two scopes: library tools exist wherever the app is
+ * open, so an agent arriving at the home page has somewhere to start, and
+ * document tools come and go with the open PDF.
+ */
+export function useWebMcp(documentId: string | null, openDocumentPath?: OpenDocumentNavigator) {
   const [status, setStatus] = useState<WebMcpStatus>('registering')
+  const navigatorRef = useRef<OpenDocumentNavigator | undefined>(openDocumentPath)
+  navigatorRef.current = openDocumentPath
 
   useEffect(() => {
     const modelContext = document.modelContext
-    if (!modelContext || !documentId) {
+    if (!modelContext) {
       setStatus('unavailable')
       return
     }
     const controller = new AbortController()
-    const state = () => editorStore.getState()
-    const currentDocument = () => {
-      const record = state().activeDocument
-      if (!record || record.id !== documentId) throw new Error('No active document is available.')
-      return record
-    }
-
-    const tools: Array<WebMCP.ModelContextTool> = [
-      tool(
-        'get_document_context',
-        'Get metadata and the current reading state for the active PDF.',
-        { type: 'object', properties: {} },
-        true,
-        () => {
-          const record = currentDocument()
-          return {
-            name: record.name,
-            title: record.title,
-            author: record.author,
-            pages: record.pageCount,
-            currentPage: state().currentPage,
-            zoom: state().zoom,
-            indexedPages: record.indexedPages,
-            annotations: state().annotations.length,
-          }
-        },
+    Promise.all(
+      libraryTools(navigatorRef).map((definition) =>
+        modelContext.registerTool(definition, { signal: controller.signal }),
       ),
-      tool(
-        'read_document_text',
-        'Read a bounded slice of extracted text from one page of the active PDF.',
-        {
-          type: 'object',
-          properties: {
-            pageNumber: { type: 'number', description: 'One-based PDF page number.' },
-            cursor: { type: 'number', description: 'Character offset; defaults to zero.' },
-            maxChars: { type: 'number', description: 'Characters to return; maximum 1000.' },
-          },
-          required: ['pageNumber'],
-        },
-        true,
-        async (input) => {
-          const parsed = z
-            .object({ pageNumber: z.number().int().positive(), cursor: z.number().int().min(0).default(0), maxChars: z.number().int().min(100).max(1000).default(900) })
-            .parse(input)
-          const record = await db.textPages.get([documentId, parsed.pageNumber])
-          if (!record) throw new Error('That page has not been indexed or contains no readable text.')
-          const text = record.text.slice(parsed.cursor, parsed.cursor + parsed.maxChars)
-          return {
-            pageNumber: parsed.pageNumber,
-            text,
-            nextCursor: parsed.cursor + text.length < record.text.length ? parsed.cursor + text.length : null,
-          }
-        },
-      ),
-      tool(
-        'search_document',
-        'Search readable text in the active PDF and return page-numbered snippets.',
-        {
-          type: 'object',
-          properties: {
-            query: { type: 'string', description: 'Text to find in the PDF.' },
-            limit: { type: 'number', description: 'Maximum results; defaults to 8.' },
-          },
-          required: ['query'],
-        },
-        true,
-        async (input) => {
-          const parsed = z.object({ query: z.string().min(1), limit: z.number().int().min(1).max(12).default(8) }).parse(input)
-          return { results: await searchDocumentText(documentId, parsed.query, parsed.limit) }
-        },
-      ),
-      tool(
-        'navigate_document',
-        'Move the visible reader to a PDF page or an existing annotation.',
-        {
-          type: 'object',
-          properties: {
-            pageNumber: { type: 'number' },
-            annotationId: { type: 'string' },
-          },
-        },
-        false,
-        async (input) => {
-          const parsed = z.object({ pageNumber: z.number().int().positive().optional(), annotationId: z.string().optional() }).refine((value) => value.pageNumber || value.annotationId, 'Provide a pageNumber or annotationId.').parse(input)
-          const annotation = parsed.annotationId ? state().annotations.find((item) => item.id === parsed.annotationId) : undefined
-          const pageNumber = annotation?.pageNumber ?? parsed.pageNumber!
-          await waitForPage(pageNumber)
-          if (annotation) state().setSelectedAnnotation(annotation.id)
-          return { pageNumber, annotationId: annotation?.id ?? null }
-        },
-      ),
-      tool(
-        'list_annotations',
-        'List structured annotations in the active PDF with optional page and kind filters.',
-        {
-          type: 'object',
-          properties: {
-            pageNumber: { type: 'number' },
-            kind: { type: 'string', enum: ['markup', 'ink', 'shape', 'text', 'note'] },
-            cursor: { type: 'number' },
-            limit: { type: 'number' },
-          },
-        },
-        true,
-        (input) => {
-          const parsed = z.object({ pageNumber: z.number().int().positive().optional(), kind: z.enum(['markup', 'ink', 'shape', 'text', 'note']).optional(), cursor: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(20).default(10) }).parse(input)
-          const filtered = state().annotations.filter((annotation) => (!parsed.pageNumber || annotation.pageNumber === parsed.pageNumber) && (!parsed.kind || annotation.kind === parsed.kind))
-          return {
-            annotations: filtered.slice(parsed.cursor, parsed.cursor + parsed.limit),
-            nextCursor: parsed.cursor + parsed.limit < filtered.length ? parsed.cursor + parsed.limit : null,
-          }
-        },
-      ),
-      tool(
-        'create_annotations',
-        'Create one or more editable annotations in the active PDF using quotes or normalized geometry.',
-        {
-          type: 'object',
-          properties: { annotations: { type: 'array', items: { type: 'object' } } },
-          required: ['annotations'],
-        },
-        false,
-        async (input) => {
-          const parsed = z.object({ annotations: z.array(createInputSchema).min(1).max(20) }).parse(input)
-          const record = currentDocument()
-          const created: Array<Annotation> = []
-          for (const item of parsed.annotations) {
-            if (item.pageNumber > record.pageCount) throw new Error(`Page ${item.pageNumber} is outside this PDF.`)
-            const base = createAnnotationBase(documentId, item.pageNumber, 'webmcp', defaultStyle(item.style))
-            if (item.kind === 'markup') {
-              const quads = await resolveQuote(item.pageNumber, item.target)
-              created.push(annotationSchema.parse({ ...base, kind: 'markup', markup: item.markup, selectedText: item.target.quote, quoteAnchor: item.target, quads }))
-            } else if (item.kind === 'note') {
-              const quads = item.target ? await resolveQuote(item.pageNumber, item.target) : null
-              const point = item.point ?? (quads?.[0] ? { x: quads[0].x + quads[0].width, y: quads[0].y } : undefined)
-              if (!point) throw new Error('A note needs a point or quote target.')
-              created.push(annotationSchema.parse({ ...base, kind: 'note', point, body: item.body, resolved: false }))
-            } else if (item.kind === 'text') {
-              created.push(annotationSchema.parse({ ...base, kind: 'text', bounds: item.bounds, body: item.body, alignment: 'left' }))
-            } else if (item.kind === 'shape') {
-              if (!item.bounds && !(item.start && item.end)) throw new Error('A shape needs bounds or start and end points.')
-              created.push(annotationSchema.parse({ ...base, kind: 'shape', shape: item.shape, bounds: item.bounds, start: item.start, end: item.end }))
-            } else {
-              created.push(annotationSchema.parse({ ...base, kind: 'ink', strokes: item.strokes }))
-            }
-          }
-          await state().createAnnotations(created, `Add ${created.length} agent annotation${created.length === 1 ? '' : 's'}`)
-          state().notify(`Agent added ${created.length} annotation${created.length === 1 ? '' : 's'} · Undo available`)
-          window.dispatchEvent(new CustomEvent('mimir:navigate', { detail: { pageNumber: created[0]?.pageNumber } }))
-          return { created: created.map((annotation) => ({ id: annotation.id, pageNumber: annotation.pageNumber, kind: annotation.kind })) }
-        },
-      ),
-      tool(
-        'update_annotations',
-        'Update annotation text, status, or visual style by stable ID.',
-        {
-          type: 'object',
-          properties: {
-            updates: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, body: { type: 'string' }, resolved: { type: 'boolean' }, style: { type: 'object' } }, required: ['id'] } },
-          },
-          required: ['updates'],
-        },
-        false,
-        async (input) => {
-          const parsed = z.object({ updates: z.array(z.object({ id: z.string(), body: z.string().optional(), resolved: z.boolean().optional(), style: styleInputSchema })).min(1).max(20) }).parse(input)
-          const updated: Array<string> = []
-          for (const update of parsed.updates) {
-            const existing = state().annotations.find((annotation) => annotation.id === update.id)
-            if (!existing) throw new Error(`Annotation ${update.id} was not found.`)
-            const patch: Record<string, unknown> = {}
-            if (update.body !== undefined && (existing.kind === 'text' || existing.kind === 'note')) patch.body = update.body
-            if (update.resolved !== undefined && existing.kind === 'note') patch.resolved = update.resolved
-            if (update.style) patch.style = { ...existing.style, ...update.style }
-            await state().updateAnnotation(update.id, patch as Partial<Annotation>, 'webmcp')
-            updated.push(update.id)
-          }
-          state().notify(`Agent updated ${updated.length} annotation${updated.length === 1 ? '' : 's'} · Undo available`)
-          return { updated }
-        },
-      ),
-      tool(
-        'delete_annotations',
-        'Delete annotations from the active PDF by stable ID.',
-        { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' } } }, required: ['ids'] },
-        false,
-        async (input) => {
-          const parsed = z.object({ ids: z.array(z.string()).min(1).max(50) }).parse(input)
-          await state().deleteAnnotations(parsed.ids, `Delete ${parsed.ids.length} agent annotation${parsed.ids.length === 1 ? '' : 's'}`)
-          state().notify(`Agent deleted ${parsed.ids.length} annotation${parsed.ids.length === 1 ? '' : 's'} · Undo available`)
-          return { deleted: parsed.ids }
-        },
-      ),
-      tool(
-        'prepare_export',
-        'Open a visible export review for the active PDF or annotation JSON.',
-        {
-          type: 'object',
-          properties: { format: { type: 'string', enum: ['pdf', 'json'] } },
-          required: ['format'],
-        },
-        false,
-        (input) => {
-          const parsed = z.object({ format: z.enum(['pdf', 'json']) }).parse(input)
-          window.dispatchEvent(new CustomEvent('mimir:prepare-export', { detail: parsed }))
-          return { prepared: parsed.format, awaitingUserSave: true }
-        },
-      ),
-    ]
-
-    Promise.all(tools.map((definition) => modelContext.registerTool(definition, { signal: controller.signal })))
+    )
       .then(() => setStatus('available'))
       .catch(() => setStatus('unavailable'))
+    return () => controller.abort()
+  }, [])
 
+  useEffect(() => {
+    const modelContext = document.modelContext
+    if (!modelContext || !documentId) return
+    const controller = new AbortController()
+    Promise.all(
+      documentTools(documentId).map((definition) =>
+        modelContext.registerTool(definition, { signal: controller.signal }),
+      ),
+    ).catch(() => setStatus('unavailable'))
     return () => controller.abort()
   }, [documentId])
 

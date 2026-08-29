@@ -1,3 +1,5 @@
+import { useCallback } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { useWebMcp, type WebMcpStatus } from '#/lib/webmcp.client'
 
 type AgentStatusProps = {
@@ -5,19 +7,32 @@ type AgentStatusProps = {
   variant?: 'library' | 'reader'
 }
 
-function statusTitle(status: WebMcpStatus) {
-  if (status === 'available') return 'WebMCP tools are available to browser agents'
-  if (status === 'registering') return 'Connecting to WebMCP'
-  return 'WebMCP is unavailable in this browser'
+const statusLabel: Record<WebMcpStatus, string> = {
+  available: 'Agent Ready',
+  registering: 'Connecting',
+  unavailable: 'No Agent',
+}
+
+const statusTitle: Record<WebMcpStatus, string> = {
+  available: 'WebMCP tools are available to browser agents',
+  registering: 'Connecting to WebMCP',
+  unavailable: 'WebMCP is unavailable in this browser',
 }
 
 export function AgentStatus({ documentId, variant = 'reader' }: AgentStatusProps) {
-  const status = useWebMcp(documentId)
+  const navigate = useNavigate()
+  // Agents open documents through the same route the reader uses, so the URL
+  // stays truthful about what is on screen.
+  const openDocumentPath = useCallback(
+    (pathSegment: string) => navigate({ to: '/$pdfName', params: { pdfName: pathSegment } }),
+    [navigate],
+  )
+  const status = useWebMcp(documentId, openDocumentPath)
 
   return (
-    <span className={`agent-status ${variant} ${status}`} title={statusTitle(status)}>
+    <span className={`agent-status ${variant} ${status}`} title={statusTitle[status]}>
       <i aria-hidden="true" />
-      Agent Ready
+      {statusLabel[status]}
     </span>
   )
 }
