@@ -835,6 +835,24 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
 
 export type WebMcpStatus = 'available' | 'unavailable' | 'registering'
 
+export interface WebMcpToolSummary {
+  name: string
+  title: string
+  description: string
+  inputSchema: unknown
+  readOnly: boolean
+}
+
+export function getWebMcpTools(documentId: string | null): Array<WebMcpToolSummary> {
+  return [...libraryTools({}), ...(documentId ? documentTools(documentId) : [])].map((definition) => ({
+    name: definition.name,
+    title: definition.title ?? definition.name,
+    description: definition.description,
+    inputSchema: definition.inputSchema,
+    readOnly: definition.annotations?.readOnlyHint === true,
+  }))
+}
+
 /**
  * Register Mimir's tools in two scopes: library tools exist wherever the app is
  * open, so an agent arriving at the home page has somewhere to start, and

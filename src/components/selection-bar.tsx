@@ -18,6 +18,7 @@ export function SelectionBar() {
   const remove = useEditorStore((state) => state.deleteAnnotations)
   const selected = annotations.filter((item) => selectedIds.includes(item.id))
   const annotation = selected[0]
+  const deleteShortcut = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? 'Delete' : 'Backspace'
 
   if (!annotation) return null
 
@@ -53,7 +54,7 @@ export function SelectionBar() {
         )}
         <IconButton
           label={selected.length === 1 ? 'Delete annotation' : `Delete ${selected.length} annotations`}
-          shortcut="⌫"
+          shortcut={deleteShortcut}
           icon={TrashIcon}
           className="is-danger"
           onClick={() => void remove(selected.map((item) => item.id), `Delete ${selected.length} annotations`)}

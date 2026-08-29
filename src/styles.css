@@ -331,7 +331,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 
 /* ─────────────────────────  Reader chrome  ───────────────────────── */
 .reader-shell { position: relative; display: grid; width: 100vw; height: 100dvh; overflow: hidden; grid-template-rows: 54px minmax(0,1fr); background: var(--desk); }
-.reader-topbar { position: relative; z-index: 20; display: grid; grid-template-columns: minmax(260px,1fr) auto minmax(260px,1fr); align-items: center; padding: 0 11px; border-bottom: 1px solid var(--line); background: var(--paper); box-shadow: 0 1px 0 oklch(0.2 0.005 60 / .03); }
+.reader-topbar { position: relative; z-index: 30; display: grid; grid-template-columns: minmax(260px,1fr) auto minmax(260px,1fr); align-items: center; padding: 0 11px; border-bottom: 1px solid var(--line); background: var(--paper); box-shadow: 0 1px 0 oklch(0.2 0.005 60 / .03); }
 .reader-identity, .reader-navigation, .reader-actions { display: flex; min-width: 0; align-items: center; }
 .reader-identity { gap: 7px; }
 .reader-identity .brand-mark { width: 26px; height: 26px; border-radius: 7px; }
@@ -348,12 +348,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .reader-actions { justify-content: flex-end; gap: 2px; }
 .reader-actions .export-button { min-height: 34px; margin-left: 9px; padding: 0 15px; font-size: 12.5px; font-weight: 570; }
 
+.agent-status-menu { position: relative; display: inline-flex; }
 .agent-status {
   position: relative; display: inline-flex; height: 30px; align-items: center; gap: 7px; padding: 0 13px 0 11px;
   border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink-soft);
   background: linear-gradient(180deg, var(--paper), var(--surface));
   box-shadow: inset 0 1px 0 var(--paper), inset 0 0 0 1px oklch(0.2 0.005 60 / .04), 0 1px 1px oklch(0.2 0.005 60 / .1), 0 4px 9px oklch(0.28 0.03 70 / .08);
-  font-size: 11px; font-weight: 520; text-shadow: none;
+  font-size: 11px; font-weight: 520; text-shadow: none; cursor: pointer;
   transition: background 160ms ease-out, border-color 160ms ease-out, box-shadow 160ms ease-out, transform 140ms var(--spring);
 }
 .agent-status::after {
@@ -369,6 +370,39 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .agent-status i { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
 .agent-status.available { color: var(--ink-soft); }
 .agent-status.available i { background: var(--moss); box-shadow: 0 0 0 3px oklch(0.52 0.075 155 / .16); }
+.agent-tools-menu {
+  position: absolute; z-index: 30; top: 100%; right: 0; width: min(370px, calc(100vw - 24px)); max-height: min(620px, calc(100dvh - 68px));
+  overflow: auto; padding: 12px 10px 10px; border: 1px solid oklch(1 0 0 / .08); border-radius: 15px;
+  color: oklch(0.97 0 0); background: oklch(0.28 0.006 60 / .97); box-shadow: 0 18px 42px oklch(0.12 0.01 60 / .3), 0 2px 7px oklch(0.12 0.01 60 / .2);
+  backdrop-filter: blur(14px); font-size: 11px;
+}
+.agent-tools-summary, .agent-tool-section-label.is-button {
+  width: 100%; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer;
+}
+.agent-tools-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 4px 10px 14px; }
+.agent-tools-summary > span { display: grid; gap: 3px; }
+.agent-tools-summary strong { font-size: 14px; font-weight: 450; letter-spacing: -.01em; line-height: 1.2; }
+.agent-tools-summary small { color: oklch(0.72 0 0); font-size: 11px; line-height: 1.25; }
+.agent-tools-summary > svg, .agent-tool-toggle > svg { flex: 0 0 auto; color: oklch(0.7 0 0); transition: transform 160ms ease-out; }
+.agent-tools-summary > svg.is-collapsed, .agent-tool-toggle > svg.is-collapsed { transform: rotate(-90deg); }
+.agent-tools-list { display: grid; gap: 3px; }
+.agent-tool { border-radius: 10px; }
+.agent-tool-trigger { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 10px; border-radius: 9px; }
+.agent-tool-trigger:hover, .agent-tools-summary:hover { background: oklch(1 0 0 / .06); }
+.agent-tool-trigger strong { font-size: 14px; font-weight: 450; letter-spacing: -.01em; line-height: 1.25; }
+.agent-tool-toggle { display: grid; width: 28px; height: 28px; flex: 0 0 auto; padding: 0; place-items: center; border: 0; border-radius: 7px; color: inherit; background: transparent; cursor: pointer; }
+.agent-tool-toggle:hover { background: oklch(1 0 0 / .08); }
+.agent-tool-details { padding: 0 10px 10px; color: oklch(0.7 0 0); }
+.agent-tool-name { display: flex; align-items: center; gap: 7px; margin: 3px 0 13px; font-size: 12px; }
+.agent-tool-name svg { color: oklch(0.67 0 0); }
+.agent-tool-section { margin-top: 12px; }
+.agent-tool-section-label { display: inline-flex; align-items: center; gap: 6px; color: oklch(0.72 0 0); font-size: 12px; }
+.agent-tool-section-label svg { color: oklch(0.68 0 0); }
+.agent-tool-section p { margin: 8px 0 0; padding: 12px; border-radius: 10px; color: oklch(0.72 0 0); background: oklch(1 0 0 / .08); font-size: 12px; line-height: 1.45; }
+.agent-tool-section-label.is-button { justify-content: flex-start; }
+.agent-tool-section-label.is-button svg { transition: transform 160ms ease-out; }
+.agent-tool-section-label.is-button svg.is-expanded { transform: rotate(90deg); }
+.agent-tool-section pre { max-width: 100%; margin: 10px 0 0; padding: 12px; overflow: auto; border-radius: 10px; color: oklch(0.78 0 0); background: oklch(0 0 0 / .18); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
 
 .annotation-toolbar { position: absolute; z-index: 20; top: 54px; right: 0; left: 0; display: flex; min-height: 66px; align-items: center; justify-content: center; padding: 0 12px; pointer-events: none; }
 .tool-tray { display: flex; align-items: center; gap: 2px; padding: 4px 5px; border-radius: 14px; background: var(--paper); box-shadow: inset 0 0 0 1px oklch(0.2 0.005 60 / .06), inset 0 1px 0 var(--paper), 0 1px 2px oklch(0.25 0.02 70 / .1), 0 6px 16px oklch(0.28 0.03 70 / .12); pointer-events: auto; transform: translate(var(--toolbar-offset-x, 0), var(--toolbar-offset-y, 0)); }
