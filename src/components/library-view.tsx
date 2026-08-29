@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { DropdownMenu, Tooltip } from 'radix-ui'
+import { Dialog, DropdownMenu, Tooltip } from 'radix-ui'
 import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowRightIcon,
@@ -48,6 +48,8 @@ export function LibraryView() {
   const zoneIconRef = useRef<AnimatedIconHandle>(null)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<(typeof documents)[number] | null>(null)
+  const [removing, setRemoving] = useState(false)
   const [storage, setStorage] = useState<{ usage?: number; quota?: number } | null>(null)
 
   const openRecord = async (record: (typeof documents)[number]) => {
@@ -68,6 +70,19 @@ export function LibraryView() {
       await navigate({ to: '/$pdfName', params: { pdfName: getDocumentPathSegment(record) } })
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'The PDF could not be opened.')
+    }
+  }
+
+  const removeDocument = async () => {
+    if (!removeTarget) return
+    setRemoving(true)
+    try {
+      await deleteDocument(removeTarget.id)
+      setRemoveTarget(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The document could not be removed.')
+    } finally {
+      setRemoving(false)
     }
   }
 
@@ -225,9 +240,7 @@ export function LibraryView() {
                           <DropdownMenu.Separator className="menu-separator" />
                           <DropdownMenu.Item
                             className="menu-item is-danger"
-                            onSelect={() => {
-                              if (window.confirm(`Remove “${record.name}” and its local annotations?`)) void deleteDocument(record.id)
-                            }}
+                            onSelect={() => setRemoveTarget(record)}
                           >
                             <TrashIcon size={15} /> Remove
                           </DropdownMenu.Item>
@@ -263,6 +276,49 @@ export function LibraryView() {
             </ul>
           </section>
         )}
+
+        <Dialog.Root
+          open={removeTarget !== null}
+          onOpenChange={(open) => {
+            if (!open && !removing) setRemoveTarget(null)
+          }}
+        >
+          <Dialog.Portal>
+            <Dialog.Overlay className="dialog-overlay" />
+            <Dialog.Content className="remove-dialog" aria-describedby="remove-description">
+              <div className="remove-dialog-heading">
+                <span className="remove-dialog-icon" aria-hidden="true"><TrashIcon size={18} /></span>
+                <div>
+                  <Dialog.Title>Remove this document?</Dialog.Title>
+                  <Dialog.Description id="remove-description">
+                    The PDF and its local annotations will be removed from this browser.
+                  </Dialog.Description>
+                </div>
+              </div>
+              {removeTarget && (
+                <div className="remove-dialog-document">
+                  <span className="remove-dialog-thumb" aria-hidden="true">PDF</span>
+                  <strong>{removeTarget.name}</strong>
+                </div>
+              )}
+              <div className="dialog-actions remove-dialog-actions">
+                <Dialog.Close asChild>
+                  <button type="button" className="secondary-button" disabled={removing}>Keep document</button>
+                </Dialog.Close>
+                <button
+                  type="button"
+                  className="remove-button"
+                  disabled={removing}
+                  aria-busy={removing}
+                  onClick={() => void removeDocument()}
+                >
+                  <TrashIcon size={15} />
+                  {removing ? 'Removing…' : 'Remove document'}
+                </button>
+              </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
 
         {(error || storeError) && <div className="error-banner" role="alert">{error || storeError}</div>}
 

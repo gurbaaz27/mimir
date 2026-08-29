@@ -2,6 +2,7 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { db } from '#/lib/db.client'
 import { editorStore } from '#/lib/editor-store.client'
 import { LibraryView } from './library-view'
@@ -20,5 +21,33 @@ describe('local document library', () => {
     expect(screen.getByRole('button', { name: /drop a pdf to begin/i })).toBeTruthy()
     expect(screen.getByText(/never leave this browser/i)).toBeTruthy()
     await waitFor(() => expect(editorStore.getState().documents).toHaveLength(0))
+  })
+
+  it('asks for confirmation in a modal before removing a document', async () => {
+    const record = {
+      id: 'doc-1',
+      fingerprint: 'fingerprint',
+      name: 'research-notes.pdf',
+      size: 1024,
+      pageCount: 12,
+      blob: new Blob(['pdf']),
+      createdAt: new Date().toISOString(),
+      lastOpenedAt: new Date().toISOString(),
+      lastPage: 3,
+      zoom: 1,
+      rotation: 0,
+      indexedPages: 12,
+    }
+    await db.documents.add(record)
+    const user = userEvent.setup()
+    render(<LibraryView />)
+
+    await user.click(await screen.findByRole('button', { name: /more options for research-notes\.pdf/i }))
+    await user.click(screen.getByRole('menuitem', { name: /remove/i }))
+
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByText(/pdf and its local annotations will be removed/i)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /remove document/i }))
+    await waitFor(async () => expect(await db.documents.get(record.id)).toBeUndefined())
   })
 })
