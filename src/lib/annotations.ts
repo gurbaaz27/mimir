@@ -58,17 +58,25 @@ export const shapeAnnotationSchema = base.extend({
   end: pointSchema.optional(),
 })
 
+/**
+ * How much text each kind of body can hold. A text box is drawn into a fixed
+ * area on the page, so it is bounded well below a note, which is read in a
+ * panel. Anything validating a body has to read the limit from here rather
+ * than restate it, or the two drift apart.
+ */
+export const annotationBodyLimits = { text: 10_000, note: 25_000 } as const
+
 export const textAnnotationSchema = base.extend({
   kind: z.literal('text'),
   bounds: rectSchema,
-  body: z.string().max(10_000),
+  body: z.string().max(annotationBodyLimits.text),
   alignment: z.enum(['left', 'center', 'right']).default('left'),
 })
 
 export const noteAnnotationSchema = base.extend({
   kind: z.literal('note'),
   point: pointSchema,
-  body: z.string().max(25_000),
+  body: z.string().max(annotationBodyLimits.note),
   resolved: z.boolean().default(false),
 })
 
@@ -233,4 +241,11 @@ export function annotationSummary(annotation: Annotation, maxTextLength = 280): 
     updatedAt: annotation.updatedAt,
     ...(annotation.kind === 'note' ? { resolved: annotation.resolved } : {}),
   }
+}
+
+/** The body limit that applies to this annotation, or null if it has no body. */
+export function annotationBodyLimit(annotation: Annotation) {
+  if (annotation.kind === 'text') return annotationBodyLimits.text
+  if (annotation.kind === 'note') return annotationBodyLimits.note
+  return null
 }

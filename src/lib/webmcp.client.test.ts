@@ -462,6 +462,39 @@ describe('batches that name the same mark twice', () => {
     expect(stored?.kind === 'note' && stored.body).toBe('Check the methodology.')
   })
 
+  it('names the real limit when a body is too long for its kind', async () => {
+    const box: Annotation = {
+      ...createAnnotationBase(documentId, 1, 'webmcp', style),
+      kind: 'text',
+      bounds: { x: 0.1, y: 0.1, width: 0.4, height: 0.1 },
+      body: 'Short.',
+      alignment: 'left',
+    }
+    const comment = note('webmcp')
+    await editorStore.getState().createAnnotations([box, comment], 'Add marks')
+    editorStore.setState({ history: [], future: [] })
+
+    // A note holds 25,000 characters and a text box 10,000, so the same body is
+    // valid for one and not the other. The flat schema advertises the larger.
+    const body = 'x'.repeat(12_000)
+    const result = (await run('update_annotations', {
+      updates: [
+        { id: box.id, body },
+        { id: comment.id, body },
+      ],
+    })) as { updated: Array<{ id: string }>; failed: Array<{ id: string; reason: string }> }
+
+    expect(result.updated.map((entry) => entry.id)).toEqual([comment.id])
+    expect(result.failed[0]?.id).toBe(box.id)
+    expect(result.failed[0]?.reason).toBe(
+      'A text annotation holds at most 10,000 characters, and this body has 12,000.',
+    )
+
+    const stored = editorStore.getState().annotations.find((item) => item.id === box.id)
+    expect(stored?.kind === 'text' && stored.body).toBe('Short.')
+    expect(editorStore.getState().history).toHaveLength(1)
+  })
+
   it('reports a repeated delete id once', async () => {
     const mine = note('webmcp')
     await editorStore.getState().createAnnotations([mine], 'Add note')

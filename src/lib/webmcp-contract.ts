@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import {
+  annotationBodyLimit,
+  annotationBodyLimits,
   annotationSummary,
   pointSchema,
   quoteAnchorSchema,
@@ -132,7 +134,7 @@ export const createAnnotationSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('note'),
       pageNumber: pageNumberSchema,
-      body: z.string().max(25_000).describe('The comment text.'),
+      body: z.string().max(annotationBodyLimits.note).describe('The comment text.'),
       point: pointSchema.optional().describe('Where to pin the note, in normalized page coordinates.'),
       target: quoteAnchorSchema.optional().describe('Anchor the note to a quote instead of a point.'),
       style: styleInputSchema,
@@ -142,7 +144,7 @@ export const createAnnotationSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('text'),
       pageNumber: pageNumberSchema,
-      body: z.string().max(10_000),
+      body: z.string().max(annotationBodyLimits.text),
       bounds: rectSchema.describe('Normalized box the text is drawn into.'),
       style: styleInputSchema,
     })
@@ -220,7 +222,13 @@ export const updateAnnotationsInput = z.object({
     .array(
       z.object({
         id: z.string().min(1),
-        body: z.string().max(25_000).optional().describe('Text and note annotations only.'),
+        body: z
+          .string()
+          .max(annotationBodyLimits.note)
+          .optional()
+          .describe(
+            `Text and note annotations only. A note holds up to ${annotationBodyLimits.note} characters, a text box up to ${annotationBodyLimits.text}; the limit that applies depends on the annotation you are updating.`,
+          ),
         resolved: z.boolean().optional().describe('Note annotations only.'),
         style: styleInputSchema,
       }),
@@ -276,6 +284,14 @@ export function partitionDeletable(
 }
 
 /** Which fields of a patch this annotation kind can actually accept. */
+/**
+ * The body limit for one annotation. A single flat schema cannot express a
+ * kind-dependent bound, so the tool checks it against the actual target.
+ */
+export function bodyLimitFor(annotation: Annotation) {
+  return annotationBodyLimit(annotation)
+}
+
 export function applicableFields(annotation: Annotation) {
   return {
     body: annotation.kind === 'text' || annotation.kind === 'note',

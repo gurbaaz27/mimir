@@ -17,6 +17,7 @@ import {
   annotationContextInput,
   annotationSummary,
   applicableFields,
+  bodyLimitFor,
   createAnnotationsInput,
   defaultStyle,
   deleteAnnotationsInput,
@@ -701,9 +702,18 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
           const allowed = applicableFields(current)
           const rejected: Array<string> = []
           const patch: Record<string, unknown> = {}
+          const limit = bodyLimitFor(current)
           if (update.body !== undefined) {
-            if (allowed.body) patch.body = update.body
-            else rejected.push('body')
+            if (!allowed.body) rejected.push('body')
+            else if (limit !== null && update.body.length > limit) {
+              // The schema advertises the more permissive of the two body
+              // limits, because one flat field cannot carry a per-kind bound.
+              failed.push({
+                id: update.id,
+                reason: `A ${annotationLabel(current)} annotation holds at most ${limit.toLocaleString('en-US')} characters, and this body has ${update.body.length.toLocaleString('en-US')}.`,
+              })
+              continue
+            } else patch.body = update.body
           }
           if (update.resolved !== undefined) {
             if (allowed.resolved) patch.resolved = update.resolved
