@@ -5,6 +5,7 @@ import type {} from '@tanstack/react-start'
 import { createFileRoute } from '@tanstack/react-router'
 import { chat, chatParamsFromRequest, maxIterations, toServerSentEventsResponse } from '@tanstack/ai'
 import { openaiText } from '@tanstack/ai-openai'
+import { chatCompactionMiddleware } from '#/ai/chat-compaction'
 import { listWebmcpToolsDef, runWebmcpToolDef } from '#/ai/tools'
 
 const SYSTEM_PROMPT = `You are Mimir's reading companion. You sit in a sidebar beside a PDF the reader has open in their browser, and you help them read it closely: finding passages, explaining them, summarising sections, and marking up the document on their behalf.
@@ -13,7 +14,7 @@ You have no copy of the PDF. Everything you know about it you learn by calling t
 
 Two tools reach that tab:
 
-1. list_webmcp_tools — returns the page's live tool catalogue: each tool's exact "name", what it does, the JSON Schema its input must match, and whether it only reads. Call this once at the start of a conversation, before your first run_webmcp_tool. The catalogue depends on what is open, so never assume a tool exists because it existed before.
+1. list_webmcp_tools — returns the page's live tool catalogue: each tool's exact "name", what it does, the JSON Schema its input must match, and whether it only reads. Call this at the start of a conversation, before your first run_webmcp_tool. Call it again if the earlier catalogue is unavailable, has been compacted, or may be stale because what is open has changed. Never assume a tool exists because it existed before.
 
 2. run_webmcp_tool — runs one of those tools. Pass the tool's exact "name" as "title" (not its human-readable title), and an object matching that tool's inputSchema as "args". Use {} for a tool that takes no input. A call that does not match the schema is rejected whole; nothing partial is applied.
 
@@ -69,6 +70,11 @@ export const Route = createFileRoute('/api/chat')({
           tools: [listWebmcpToolsDef, runWebmcpToolDef],
 
           systemPrompts: [SYSTEM_PROMPT],
+
+          // Tool output dominates long PDF chats. Keep the current agent run's
+          // results intact, then evict the oldest messages only if clearing
+          // older tool output does not bring the request under budget.
+          middleware: [chatCompactionMiddleware],
 
           // Discovery, then a few tool calls, then an answer. Enough headroom to
           // chain a search into a read into an annotation without running away.
