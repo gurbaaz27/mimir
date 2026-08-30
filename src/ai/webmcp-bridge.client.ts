@@ -1,5 +1,5 @@
 import '@tanstack/react-start/client-only'
-import { getLocalTool, listLocalTools } from '#/lib/webmcp.client'
+import { getLocalTool, isToolFailure, listLocalTools } from '#/lib/webmcp.client'
 
 /** One entry of the catalogue handed to the model by `list_webmcp_tools`. */
 export interface WebmcpToolSummary {
@@ -56,6 +56,27 @@ export async function listWebmcpTools(): Promise<WebmcpToolSummary[]> {
 }
 
 /**
+ * Tools report failure as data, because WebMCP discards a thrown error's
+ * message. Turn it back into a rejection here, on our side of that boundary,
+ * where the sentence survives and the model can act on it.
+ */
+function unwrap(result: unknown) {
+  if (isToolFailure(result)) throw new Error(result.error)
+  // A tool reached over WebMCP returns its payload as a JSON string.
+  if (typeof result === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(result)
+      if (isToolFailure(parsed)) throw new Error(parsed.error)
+      return parsed
+    } catch (error) {
+      if (error instanceof Error && !(error instanceof SyntaxError)) throw error
+      return result
+    }
+  }
+  return result
+}
+
+/**
  * Run one tool by name.
  *
  * `document.modelContext.executeTool` is the path that matters: it is how a
@@ -78,7 +99,7 @@ export async function executeWebmcpTool(
     if (match) {
       // The spec passes arguments as a JSON string, the way an agent sends them.
       const result = await context.executeTool(match, JSON.stringify(args ?? {}), { signal })
-      return { transport: 'webmcp', result }
+      return { transport: 'webmcp', result: unwrap(result) }
     }
   }
 
@@ -93,5 +114,5 @@ export async function executeWebmcpTool(
   }
 
   const result = await local.execute(args ?? {}, { signal: signal ?? new AbortController().signal })
-  return { transport: 'in-page', result }
+  return { transport: 'in-page', result: unwrap(result) }
 }

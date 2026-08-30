@@ -3,7 +3,7 @@
 // in the full Start entry, so without it `server` is not a known key.
 import type {} from '@tanstack/react-start'
 import { createFileRoute } from '@tanstack/react-router'
-import { chat, maxIterations, toServerSentEventsResponse } from '@tanstack/ai'
+import { chat, chatParamsFromRequest, maxIterations, toServerSentEventsResponse } from '@tanstack/ai'
 import { openaiText } from '@tanstack/ai-openai'
 import { listWebmcpToolsDef, runWebmcpToolDef } from '#/ai/tools'
 
@@ -37,14 +37,35 @@ export const Route = createFileRoute('/api/chat')({
           return Response.json({ error: 'OPENAI_API_KEY is not configured' }, { status: 500 })
         }
 
-        const body = await request.json()
+        // Parses the body as an AG-UI RunAgentInput. Reading `messages` alone is
+        // not enough: a client tool pauses the run with an interrupt, and the
+        // browser can only resume it if the run it gets back is the run it
+        // started. That correlation rides on `runId`/`threadId`, and the tool
+        // output itself arrives as `resume` — drop any of them and the model
+        // stops dead after its first tool call, with no error to show for it.
+        // Throws a 400 Response on a malformed body, which Start returns as-is.
+        const params = await chatParamsFromRequest(request)
 
         const stream = chat({
           adapter: openaiText('gpt-5.6-luna'),
-          messages: body.messages,
+          ...params,
 
-          // Definitions only. The browser tab owns execution, because that is
-          // where the document and its WebMCP registry live.
+          // Reasoning off, and not for cost. gpt-5.6-luna is a reasoning model,
+          // and on the Responses API a replayed `function_call` item must be
+          // accompanied by the `reasoning` item it was produced with. The
+          // adapter replays the function_call id but has no path to emit a
+          // reasoning item, so the turn *after* any tool call is rejected:
+          // "function_call was provided without its required reasoning item" —
+          // which is every turn that matters here. Chat Completions is not the
+          // way out either: OpenAI rejects function tools with a reasoning
+          // effort on this model there. With effort 'none' no reasoning items
+          // exist, so nothing has to be paired and the agent loop survives its
+          // own tool results.
+          modelOptions: { reasoning: { effort: 'none' } },
+
+          // Definitions only, and ours — not the tool list the caller declared.
+          // The browser tab owns execution, because that is where the document
+          // and its WebMCP registry live.
           tools: [listWebmcpToolsDef, runWebmcpToolDef],
 
           systemPrompts: [SYSTEM_PROMPT],

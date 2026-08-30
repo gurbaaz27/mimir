@@ -3,6 +3,7 @@ import { fetchServerSentEvents, createChatClientOptions } from '@tanstack/ai-cli
 import { useChat } from '@tanstack/ai-react'
 import { LoaderCircle } from 'lucide-react'
 import { ArrowUpRightIcon, BotIcon, XIcon, ZapIcon } from '#/components/icons'
+import { ChatMarkdown } from './chat-markdown'
 import { webmcpClientTools } from '#/ai/client-tools'
 import { canExecuteOverWebmcp } from '#/ai/webmcp-bridge.client'
 import { cn } from '#/lib/utils'
@@ -137,18 +138,19 @@ export function ChatSidebar({ open, onClose }: { open: boolean; onClose: () => v
                 >
                   {message.parts.map((part, index) => {
                     if (part.type === 'text') {
-                      return (
+                      // Only the assistant writes markdown. What the reader
+                      // typed is shown back exactly as typed — running it
+                      // through a parser would eat their underscores and
+                      // asterisks and change their own words.
+                      return message.role === 'user' ? (
                         <p
                           key={index}
-                          className={cn(
-                            'm-0 max-w-full text-xs leading-[1.6] whitespace-pre-wrap',
-                            message.role === 'user'
-                              ? 'rounded-xl rounded-br-[5px] bg-sunken px-3 py-2 text-ink'
-                              : 'text-ink-soft',
-                          )}
+                          className="m-0 max-w-full rounded-xl rounded-br-[5px] bg-sunken px-3 py-2 text-xs leading-[1.6] whitespace-pre-wrap text-ink"
                         >
                           {part.content}
                         </p>
+                      ) : (
+                        <ChatMarkdown key={index} content={part.content} />
                       )
                     }
                     if (part.type === 'tool-call') {

@@ -35,7 +35,7 @@ import {
   ToolError,
   updateAnnotationsInput,
 } from './webmcp-contract'
-import { mergeTextQuads } from './annotation-geometry'
+import { mergeTextQuads, textLayerSelector } from './annotation-geometry'
 
 /** Navigates the app to a document's reader route. Supplied by the mounting component. */
 export type OpenDocumentNavigator = (pathSegment: string) => void | Promise<void>
@@ -50,6 +50,26 @@ interface ToolDefinition<Schema extends z.ZodType> {
 }
 
 /**
+ * The shape a tool returns instead of throwing. WebMCP does not carry a thrown
+ * error's message across the agent boundary — the caller is handed a generic
+ * "the script function threw an error" and nothing else — so a tool that throws
+ * tells the agent only that something went wrong, never what. An agent given no
+ * reason does not stop; it guesses, retries the same call with a different
+ * irrelevant field, and then reports its guess to the reader as fact.
+ *
+ * So failures travel as data. `isError` marks them, and `error` is the same
+ * sentence the tool would have thrown.
+ */
+export interface ToolFailure {
+  isError: true
+  error: string
+}
+
+export function isToolFailure(value: unknown): value is ToolFailure {
+  return typeof value === 'object' && value !== null && (value as ToolFailure).isError === true
+}
+
+/**
  * Build a tool whose published JSON Schema is generated from the same Zod schema
  * that validates its input, and whose failures always reach the agent as one
  * readable sentence rather than a serialized error object.
@@ -61,7 +81,7 @@ function tool<Schema extends z.ZodType>(definition: ToolDefinition<Schema>): Web
     description: definition.description,
     inputSchema: toJsonSchema(definition.schema),
     annotations: { readOnlyHint: definition.readOnly, untrustedContentHint: true },
-    execute: async (input, options) => {
+    execute: async (input, options): Promise<unknown> => {
       let parsed: z.output<Schema>
       try {
         parsed = definition.schema.parse(input ?? {}) as z.output<Schema>
@@ -70,12 +90,12 @@ function tool<Schema extends z.ZodType>(definition: ToolDefinition<Schema>): Web
         // applied. Say so: an agent that assumed a partial write would otherwise
         // have to go and find out what landed.
         const scope = definition.readOnly ? '' : ' Nothing was applied — fix the request and send it again.'
-        throw new Error(`${formatToolError(error)}.${scope}`)
+        return { isError: true, error: `${formatToolError(error)}.${scope}` } satisfies ToolFailure
       }
       try {
         return await definition.execute(parsed, options)
       } catch (error) {
-        throw new Error(formatToolError(error))
+        return { isError: true, error: formatToolError(error) } satisfies ToolFailure
       }
     },
   }
@@ -132,16 +152,26 @@ async function scrollToPage(pageNumber: number) {
 }
 
 /** Text anchoring needs the rendered text layer, so this waits for it too. */
-async function waitForTextLayer(pageNumber: number) {
+async function waitForTextLayer(documentId: string, pageNumber: number) {
   const page = await scrollToPage(pageNumber)
-  return pollFor(
-    () => (page.querySelector('.textLayer span') ? page : null),
-    () =>
-      new ToolError(
-        `Page ${pageNumber} has no selectable text.`,
-        'It is most likely a scan. Place a note with a point instead of anchoring to a quote.',
-      ),
-  )
+  try {
+    return await pollFor(
+      () => (page.querySelector(`${textLayerSelector} span`) ? page : null),
+      () => new Error('pending'),
+    )
+  } catch {
+    // Do not guess at "it is a scan". The index knows whether this page has
+    // text, and a wrong diagnosis is worse than none: an agent told a page is
+    // unreadable stops trying to anchor to it and reports that to the reader as
+    // fact, when the truth may be that the page has simply not rendered yet.
+    const extracted = (await db.textPages.get([documentId, pageNumber]))?.text.trim().length ?? 0
+    throw new ToolError(
+      `Page ${pageNumber}'s text layer has not rendered.`,
+      extracted
+        ? 'The page does have extractable text, so retry shortly — the layer renders as the page comes into view.'
+        : 'No text was extracted from this page either, so it is most likely a scan. Place a note with a point instead of anchoring to a quote.',
+    )
+  }
 }
 
 function collapseWhitespace(value: string) {
@@ -153,8 +183,8 @@ function collapseWhitespace(value: string) {
  * A miss reports where the quote actually occurs so the agent can retry.
  */
 async function resolveQuote(documentId: string, pageNumber: number, target: QuoteAnchor, bridgeInlineGaps = false) {
-  const page = await waitForTextLayer(pageNumber)
-  const layer = page.querySelector<HTMLElement>('.textLayer')
+  const page = await waitForTextLayer(documentId, pageNumber)
+  const layer = page.querySelector<HTMLElement>(textLayerSelector)
   if (!layer) throw new ToolError(`Page ${pageNumber} has no selectable text.`)
   const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
   const nodes: Array<{ node: Text; start: number; end: number }> = []
@@ -168,47 +198,77 @@ async function resolveQuote(documentId: string, pageNumber: number, target: Quot
     node = walker.nextNode()
   }
 
-  let normalizedText = ''
-  const normalizedToRaw: Array<number> = []
-  for (let index = 0; index < rawText.length; index += 1) {
-    const character = rawText[index]!
-    if (/\s/.test(character)) {
-      if (normalizedText && !normalizedText.endsWith(' ')) {
-        normalizedText += ' '
-        normalizedToRaw.push(index)
+  // Two ways of reading the same page, tried in order.
+  //
+  // "collapse" mirrors how the text reads on screen: runs of whitespace become
+  // a single space. That is what a quote lifted from search_document matches.
+  //
+  // It is not always enough. A text layer is a bag of absolutely positioned
+  // spans, and pdf.js splits a token across them wherever kerning demands it,
+  // so the separator this function puts between nodes can land mid-token:
+  // "D-9519" + "/T1" reads as "D-9519 /T1", and no quote of "D-9519/T1" will
+  // ever match it — even though search_document, which reads the extracted page
+  // text rather than the DOM, found it and told the caller it was there.
+  // "strip" drops whitespace altogether so a split token still resolves.
+  const projections = (['collapse', 'strip'] as const).map((mode) => {
+    let text = ''
+    const toRaw: Array<number> = []
+    for (let index = 0; index < rawText.length; index += 1) {
+      const character = rawText[index]!
+      if (/\s/.test(character)) {
+        if (mode === 'strip') continue
+        if (text && !text.endsWith(' ')) {
+          text += ' '
+          toRaw.push(index)
+        }
+      } else {
+        text += character
+        toRaw.push(index)
       }
-    } else {
-      normalizedText += character
-      normalizedToRaw.push(index)
     }
-  }
-  const haystack = normalizedText.toLocaleLowerCase()
-  const needle = collapseWhitespace(target.quote).toLocaleLowerCase()
-  const matches: Array<number> = []
-  let from = 0
-  while (from <= haystack.length) {
-    const index = haystack.indexOf(needle, from)
-    if (index < 0) break
-    const prefixMatches =
-      !target.prefix ||
-      haystack.slice(Math.max(0, index - target.prefix.length), index).endsWith(target.prefix.toLocaleLowerCase())
-    const suffixMatches =
-      !target.suffix ||
-      haystack
-        .slice(index + needle.length, index + needle.length + target.suffix.length)
-        .startsWith(target.suffix.toLocaleLowerCase())
-    if (prefixMatches && suffixMatches) matches.push(index)
-    from = index + Math.max(needle.length, 1)
+    const shape = (value: string) => {
+      const collapsed = collapseWhitespace(value).toLocaleLowerCase()
+      return mode === 'strip' ? collapsed.replace(/\s+/g, '') : collapsed
+    }
+    return { haystack: text.toLocaleLowerCase(), toRaw, shape }
+  })
+
+  let matches: Array<number> = []
+  let needle = ''
+  let normalizedToRaw: Array<number> = []
+  for (const projection of projections) {
+    const candidate = projection.shape(target.quote)
+    if (!candidate) continue
+    const prefix = target.prefix ? projection.shape(target.prefix) : ''
+    const suffix = target.suffix ? projection.shape(target.suffix) : ''
+    const found: Array<number> = []
+    let from = 0
+    while (from <= projection.haystack.length) {
+      const index = projection.haystack.indexOf(candidate, from)
+      if (index < 0) break
+      const prefixMatches =
+        !prefix || projection.haystack.slice(Math.max(0, index - prefix.length), index).endsWith(prefix)
+      const suffixMatches =
+        !suffix || projection.haystack.slice(index + candidate.length, index + candidate.length + suffix.length).startsWith(suffix)
+      if (prefixMatches && suffixMatches) found.push(index)
+      from = index + Math.max(candidate.length, 1)
+    }
+    if (found.length) {
+      matches = found
+      needle = candidate
+      normalizedToRaw = projection.toRaw
+      break
+    }
   }
 
   if (!matches.length) {
     const elsewhere = await searchDocumentText(documentId, target.quote, 3)
-    const pages = [...new Set(elsewhere.map((result) => result.pageNumber))]
+    const pages = [...new Set(elsewhere.map((result) => result.pageNumber))].filter((page) => page !== pageNumber)
     throw new ToolError(
-      `The quote was not found on page ${pageNumber}.`,
+      `The quote was not found in page ${pageNumber}'s text layer.`,
       pages.length
         ? `It appears on page ${pages.join(', ')} — retry with that pageNumber.`
-        : 'Use search_document to find the exact wording; the PDF may hyphenate or space it differently.',
+        : 'Use search_document to copy the exact wording; the PDF may hyphenate or space it differently.',
     )
   }
 
@@ -631,7 +691,14 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
               )
             } else if (item.kind === 'note') {
               const quads = item.target ? await resolveQuote(documentId, item.pageNumber, item.target) : null
-              const point = item.point ?? (quads?.[0] ? { x: quads[0].x + quads[0].width, y: quads[0].y } : undefined)
+              // Pin the note just past the quote, but never off the page. A quote
+              // ending at the right margin — the last column of a table, say —
+              // otherwise derives an x above 1, which the annotation schema
+              // rejects, taking the whole batch down with it.
+              const onPage = (value: number) => Math.min(Math.max(value, 0), 1)
+              const point = item.point ?? (quads?.[0]
+                ? { x: onPage(quads[0].x + quads[0].width), y: onPage(quads[0].y) }
+                : undefined)
               if (!point) throw new ToolError('A note needs a point or a quote target.')
               created.push(annotationSchema.parse({ ...base, kind: 'note', point, body: item.body, resolved: false }))
             } else if (item.kind === 'text') {
