@@ -2,6 +2,7 @@ import { ClientOnly, createFileRoute, Link } from '@tanstack/react-router'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { getDocumentPathSegment } from '#/lib/document-route'
 import { editorStore, useEditorStore } from '#/lib/editor-store.client'
+import { MimirMark } from '#/components/ui'
 
 const ReaderWorkspace = lazy(() =>
   import('#/components/reader-workspace').then((module) => ({ default: module.ReaderWorkspace })),
@@ -73,10 +74,13 @@ function DocumentPage() {
   const isCurrentDocument = activeDocument && getDocumentPathSegment(activeDocument) === pdfName
   if (notFound) {
     return (
-      <div className="app-boot">
-        <strong>That document is not in your local library.</strong>
-        <Link to="/">Back to library</Link>
-      </div>
+      <main className="app-boot not-found-page">
+        <MimirMark />
+        <div className="not-found-copy">
+          <strong>That document is not in your local library.</strong>
+          <Link to="/">Back to library</Link>
+        </div>
+      </main>
     )
   }
   if (error) return <div className="app-boot">{error}</div>

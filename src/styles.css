@@ -92,6 +92,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .app-boot { display: grid; min-height: 100dvh; place-items: center; gap: 10px; padding: 24px; text-align: center; color: var(--muted); font-size: 16px; letter-spacing: -.012em; }
 .app-boot strong { color: var(--ink); font-family: var(--font-display); font-size: 19px; font-weight: 620; letter-spacing: -.025em; }
 .app-boot a { color: var(--bark); }
+.not-found-page { align-content: center; gap: 18px; }
+.not-found-page .brand { gap: 11px; }
+.not-found-page .brand-mark { width: 38px; height: 38px; border-radius: 10px; }
+.not-found-page .brand-name { font-size: 25px; }
+.not-found-copy { display: grid; gap: 6px; }
 .spin { animation: spin .9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

@@ -1,7 +1,18 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Link, Scripts, createRootRoute } from '@tanstack/react-router'
+import { MimirMark } from '#/components/ui'
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
+  notFoundComponent: () => (
+    <main className="app-boot not-found-page">
+      <MimirMark />
+      <div className="not-found-copy">
+        <strong>Page not found</strong>
+        <p>That page doesn’t exist.</p>
+        <Link to="/">Back to library</Link>
+      </div>
+    </main>
+  ),
   head: () => ({
     meta: [
       {
