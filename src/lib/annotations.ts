@@ -71,11 +71,15 @@ export const textAnnotationSchema = base.extend({
   bounds: rectSchema,
   body: z.string().max(annotationBodyLimits.text),
   alignment: z.enum(['left', 'center', 'right']).default('left'),
+  /** Absent on legacy records and therefore treated as enabled by the editor. */
+  autoHeight: z.boolean().optional(),
 })
 
 export const noteAnnotationSchema = base.extend({
   kind: z.literal('note'),
   point: pointSchema,
+  /** Persisted after creation/resizing; point remains the note's top-left anchor. */
+  bounds: rectSchema.optional(),
   body: z.string().max(annotationBodyLimits.note),
   resolved: z.boolean().default(false),
 })
@@ -188,7 +192,7 @@ export function annotationBounds(annotation: Annotation): NormalizedRect | null 
     case 'text':
       return annotation.bounds
     case 'note':
-      return { x: annotation.point.x, y: annotation.point.y, width: 0.03, height: 0.03 }
+      return annotation.bounds ?? { x: annotation.point.x, y: annotation.point.y, width: 0.03, height: 0.03 }
   }
 }
 
@@ -219,7 +223,11 @@ export function translateAnnotation(annotation: Annotation, dx: number, dy: numb
     case 'text':
       return { ...annotation, bounds: moveRect(annotation.bounds) }
     case 'note':
-      return { ...annotation, point: movePoint(annotation.point) }
+      return {
+        ...annotation,
+        point: movePoint(annotation.point),
+        ...(annotation.bounds ? { bounds: moveRect(annotation.bounds) } : {}),
+      }
   }
 }
 

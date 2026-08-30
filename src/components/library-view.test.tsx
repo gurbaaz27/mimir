@@ -19,7 +19,7 @@ describe('local document library', () => {
     render(<LibraryView />)
     expect(screen.getByRole('heading', { name: /where gods humans and ai study together/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /drop a pdf to begin/i })).toBeTruthy()
-    expect(screen.getByText(/never leave this browser/i)).toBeTruthy()
+    expect(screen.getByText(/pdfs never leave the browser/i)).toBeTruthy()
     await waitFor(() => expect(editorStore.getState().documents).toHaveLength(0))
   })
 
@@ -44,7 +44,7 @@ describe('local document library', () => {
 
     expect(await screen.findByRole('button', { name: /drop another pdf here/i })).toBeTruthy()
     expect(document.querySelectorAll('.pitch-line')[1]?.textContent).toMatch(/ask your agent to do that for you/i)
-    expect(screen.getByText(/never leave this browser/i)).toBeTruthy()
+    expect(screen.getByText(/pdfs never leave the browser/i)).toBeTruthy()
 
     const scrollIntoView = vi.fn()
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })

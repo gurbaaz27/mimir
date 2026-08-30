@@ -1,13 +1,22 @@
 import { useMemo, useRef, useState, type PointerEvent } from 'react'
 import type { Annotation, Point } from '#/lib/annotations'
 import { annotationBounds, annotationColors, createAnnotationBase } from '#/lib/annotations'
-import { constrainDrawingEnd } from '#/lib/annotation-geometry'
+import { constrainDrawingEnd, defaultNoteSizePx, resizeRectFromHandle, type ResizeHandle } from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
+import { EndpointHandles, ResizeHandles } from './annotation-resize-handles'
 
 interface AnnotationOverlayProps {
   pageNumber: number
   annotations: Array<Annotation>
+  pageWidth: number
+  pageHeight: number
+  zoom: number
 }
+
+type ShapeAnnotation = Extract<Annotation, { kind: 'shape' }>
+type TransformOperation =
+  | { kind: 'resize'; handle: ResizeHandle }
+  | { kind: 'endpoint'; endpoint: 'start' | 'end' }
 
 function asPoint(event: { clientX: number; clientY: number }, svg: SVGSVGElement): Point {
   const rect = svg.getBoundingClientRect()
@@ -129,10 +138,10 @@ function AnnotationGlyph({
       {selected && bounds && (
         <rect
           className="annotation-selection"
-          x={Math.max(0, bounds.x - 0.006)}
-          y={Math.max(0, bounds.y - 0.006)}
-          width={Math.min(1 - bounds.x, bounds.width + 0.012)}
-          height={Math.min(1 - bounds.y, bounds.height + 0.012)}
+          x={bounds.x}
+          y={bounds.y}
+          width={bounds.width}
+          height={bounds.height}
           pathLength="1"
         />
       )}
@@ -140,7 +149,7 @@ function AnnotationGlyph({
   )
 }
 
-export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlayProps) {
+export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeight, zoom }: AnnotationOverlayProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const tool = useEditorStore((state) => state.tool)
   const color = useEditorStore((state) => state.color)
@@ -153,12 +162,21 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
   const updateAnnotationDrag = useEditorStore((state) => state.updateAnnotationDrag)
   const finishAnnotationDrag = useEditorStore((state) => state.finishAnnotationDrag)
   const createAnnotations = useEditorStore((state) => state.createAnnotations)
+  const updateAnnotation = useEditorStore((state) => state.updateAnnotation)
   const startRef = useRef<Point | null>(null)
   const pointsRef = useRef<Array<Point>>([])
   const marqueeRef = useRef<{ pointerId: number; start: Point; moved: boolean } | null>(null)
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; ids: Array<string> } | null>(null)
+  const transformRef = useRef<{
+    pointerId: number
+    annotation: ShapeAnnotation
+    operation: TransformOperation
+    moved: boolean
+  } | null>(null)
+  const transformPreviewRef = useRef<ShapeAnnotation | null>(null)
   const [draftEnd, setDraftEnd] = useState<Point | null>(null)
   const [selectionEnd, setSelectionEnd] = useState<Point | null>(null)
+  const [transformPreview, setTransformPreview] = useState<ShapeAnnotation | null>(null)
   const isDirectTool = ['ink', 'rectangle', 'ellipse', 'line', 'arrow', 'text', 'note'].includes(tool)
   const pageAnnotations = useMemo(
     () => annotations.filter((annotation) => annotation.pageNumber === pageNumber),
@@ -180,13 +198,23 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
     const style = { color, opacity: 0.95, strokeWidth: 2, fontSize: 12 }
     const base = createAnnotationBase(activeDocument.id, pageNumber, 'human', style)
     if (tool === 'note') {
-      await createAnnotations([{ ...base, kind: 'note', point, body: '', resolved: false }], 'Add note')
+      const width = Math.min(1, defaultNoteSizePx.width * zoom / pageWidth)
+      const height = Math.min(1, defaultNoteSizePx.height * zoom / pageHeight)
+      const bounds = {
+        x: Math.min(point.x, 1 - width),
+        y: Math.min(point.y, 1 - height),
+        width,
+        height,
+      }
+      await createAnnotations([{ ...base, kind: 'note', point: { x: bounds.x, y: bounds.y }, bounds, body: '', resolved: false }], 'Add note')
     } else if (tool === 'text') {
+      const width = Math.min(0.3, 1)
+      const height = Math.min(0.027, 1)
       await createAnnotations(
         [{
           ...base,
           kind: 'text',
-          bounds: { x: point.x, y: point.y, width: Math.min(0.3, 0.98 - point.x), height: 0.027 },
+          bounds: { x: Math.min(point.x, 1 - width), y: Math.min(point.y, 1 - height), width, height },
           body: '',
           alignment: 'left',
         }],
@@ -239,6 +267,72 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
     dragRef.current = null
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     void finishAnnotationDrag()
+  }
+
+  const beginTransform = (
+    event: PointerEvent<HTMLButtonElement>,
+    annotation: ShapeAnnotation,
+    operation: TransformOperation,
+  ) => {
+    event.stopPropagation()
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    transformRef.current = { pointerId: event.pointerId, annotation, operation, moved: false }
+    transformPreviewRef.current = annotation
+    setTransformPreview(annotation)
+  }
+
+  const handleTransformMove = (event: PointerEvent<HTMLButtonElement>) => {
+    const transform = transformRef.current
+    const svg = svgRef.current
+    if (!transform || transform.pointerId !== event.pointerId || !svg) return
+    event.stopPropagation()
+    event.preventDefault()
+    const point = asPoint(event, svg)
+    let next: ShapeAnnotation
+    if (transform.operation.kind === 'resize' && transform.annotation.bounds) {
+      next = {
+        ...transform.annotation,
+        bounds: resizeRectFromHandle(
+          transform.annotation.bounds,
+          transform.operation.handle,
+          point,
+          pageWidth,
+          pageHeight,
+          event.shiftKey,
+        ),
+      }
+    } else if (transform.operation.kind === 'endpoint' && transform.annotation.start && transform.annotation.end) {
+      const fixed = transform.operation.endpoint === 'start' ? transform.annotation.end : transform.annotation.start
+      const nextPoint = constrainDrawingEnd(fixed, point, 'arrow', event.shiftKey, pageWidth, pageHeight)
+      next = { ...transform.annotation, [transform.operation.endpoint]: nextPoint }
+    } else {
+      return
+    }
+    transform.moved = true
+    transformPreviewRef.current = next
+    setTransformPreview(next)
+  }
+
+  const handleTransformEnd = (event: PointerEvent<HTMLButtonElement>) => {
+    const transform = transformRef.current
+    if (!transform || transform.pointerId !== event.pointerId) return
+    event.stopPropagation()
+    transformRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    const preview = transformPreviewRef.current
+    if (!preview || !transform.moved) {
+      transformPreviewRef.current = null
+      setTransformPreview(null)
+      return
+    }
+    const patch = preview.bounds
+      ? { bounds: preview.bounds }
+      : { start: preview.start, end: preview.end }
+    void updateAnnotation(preview.id, patch).finally(() => {
+      transformPreviewRef.current = null
+      setTransformPreview(null)
+    })
   }
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
@@ -326,6 +420,7 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
   const selectionBounds = marqueeRef.current && selectionEnd ? boundsBetween(marqueeRef.current.start, selectionEnd) : null
 
   return (
+    <>
     <svg
       ref={svgRef}
       className={`annotation-layer ${isDirectTool ? 'is-drawing' : ''} ${tool === 'select' ? 'is-selecting' : ''}`}
@@ -336,17 +431,20 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
       onPointerUp={(event) => void handlePointerUp(event)}
       onPointerCancel={(event) => void handlePointerUp(event)}
     >
-      {drawableAnnotations.map((annotation) => (
-        <AnnotationGlyph
-          key={annotation.id}
-          annotation={annotation}
-          selected={selectedIds.includes(annotation.id)}
-          dragOffset={annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null}
-          onPointerDown={handleAnnotationPointerDown}
-          onPointerMove={handleAnnotationPointerMove}
-          onPointerUp={handleAnnotationPointerUp}
-        />
-      ))}
+      {drawableAnnotations.map((annotation) => {
+        const displayedAnnotation = transformPreview?.id === annotation.id ? transformPreview : annotation
+        return (
+          <AnnotationGlyph
+            key={annotation.id}
+            annotation={displayedAnnotation}
+            selected={selectedIds.includes(annotation.id)}
+            dragOffset={annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null}
+            onPointerDown={handleAnnotationPointerDown}
+            onPointerMove={handleAnnotationPointerMove}
+            onPointerUp={handleAnnotationPointerUp}
+          />
+        )
+      })}
       {selectionBounds && <rect className="annotation-marquee" {...selectionBounds} />}
       {draftBounds && (tool === 'rectangle' || tool === 'ellipse') &&
         (tool === 'rectangle' ? (
@@ -375,6 +473,38 @@ export function AnnotationOverlay({ pageNumber, annotations }: AnnotationOverlay
         <polyline className="annotation-draft" points={pointsRef.current.map((point) => `${point.x},${point.y}`).join(' ')} stroke={color} />
       )}
     </svg>
+    {tool === 'select' && selectedIds.length === 1 && drawableAnnotations.map((annotation) => {
+      if (annotation.id !== selectedIds[0] || annotation.kind !== 'shape') return null
+      const displayedAnnotation = transformPreview?.id === annotation.id ? transformPreview : annotation
+      if (displayedAnnotation.bounds) {
+        return (
+          <div key={annotation.id} className="annotation-transform-layer">
+            <ResizeHandles
+              bounds={displayedAnnotation.bounds}
+              coordinateSpace="page"
+              onPointerDown={(event, handle) => beginTransform(event, annotation, { kind: 'resize', handle })}
+              onPointerMove={handleTransformMove}
+              onPointerUp={handleTransformEnd}
+            />
+          </div>
+        )
+      }
+      if (displayedAnnotation.start && displayedAnnotation.end) {
+        return (
+          <div key={annotation.id} className="annotation-transform-layer">
+            <EndpointHandles
+              start={displayedAnnotation.start}
+              end={displayedAnnotation.end}
+              onPointerDown={(event, endpoint) => beginTransform(event, annotation, { kind: 'endpoint', endpoint })}
+              onPointerMove={handleTransformMove}
+              onPointerUp={handleTransformEnd}
+            />
+          </div>
+        )
+      }
+      return null
+    })}
+    </>
   )
 }
 

@@ -492,6 +492,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .annotation-glyph { pointer-events: visiblePainted; cursor: pointer; }
 .annotation-glyph:hover { filter: saturate(1.1); }
 .annotation-selection { fill: none; stroke: var(--ink); stroke-width: 1.5px; stroke-dasharray: .012 .008; vector-effect: non-scaling-stroke; pointer-events: none; }
+.annotation-transform-layer { position: absolute; z-index: 5; inset: 0; pointer-events: none; }
+.annotation-resize-handles, .annotation-endpoint-handles { position: absolute; z-index: 4; inset: 0; pointer-events: none; }
+.annotation-resize-handle, .annotation-endpoint-handle { position: absolute; display: grid; width: 22px; height: 22px; padding: 0; place-items: center; border: 0; outline: none; background: transparent; pointer-events: auto; touch-action: none; transform: translate(-50%, -50%); }
+.annotation-resize-handles.is-parent .annotation-resize-handle { transform: translate(-50%, -50%) scale(calc(1 / var(--annotation-handle-zoom, 1))); }
+.annotation-resize-handle::after, .annotation-endpoint-handle::after { width: 8px; height: 8px; border: 1.5px solid var(--ink); border-radius: 2px; background: var(--paper); box-shadow: 0 1px 2px oklch(0.2 0.02 70 / .24); content: ""; transition: width 100ms ease-out, height 100ms ease-out, border-color 100ms ease-out, background 100ms ease-out; }
+.annotation-resize-handle:hover::after, .annotation-resize-handle:focus-visible::after, .annotation-endpoint-handle:hover::after, .annotation-endpoint-handle:focus-visible::after { width: 10px; height: 10px; border-color: var(--mark-tide); background: color-mix(in oklab, var(--mark-tide) 12%, var(--paper)); }
+.annotation-resize-handle.is-nw, .annotation-resize-handle.is-se { cursor: nwse-resize; }
+.annotation-resize-handle.is-ne, .annotation-resize-handle.is-sw { cursor: nesw-resize; }
+.annotation-resize-handle.is-n, .annotation-resize-handle.is-s { cursor: ns-resize; }
+.annotation-resize-handle.is-e, .annotation-resize-handle.is-w { cursor: ew-resize; }
+.annotation-endpoint-handle { cursor: move; }
+.annotation-endpoint-handle::after { width: 9px; height: 9px; border-radius: 50%; }
+.annotation-endpoint-handle.is-end::after { background: var(--ink); box-shadow: inset 0 0 0 2px var(--paper), 0 1px 2px oklch(0.2 0.02 70 / .24); }
 .annotation-marquee { fill: oklch(0.52 0.075 155 / .08); stroke: var(--ink); stroke-width: 1.5px; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 .annotation-draft { fill: none; stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: .84; }
 
@@ -520,10 +533,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .sticky-pin.is-selected { box-shadow: inset 0 0 0 1.5px var(--ink), 0 3px 7px oklch(0.3 0.05 75 / .22); }
 .sticky-pin.is-resolved { opacity: .66; }
 .text-annotation-box { position: absolute; }
+.sticky-note > .annotation-resize-handles, .text-annotation-box > .annotation-resize-handles { z-index: 5; overflow: visible; }
 .text-annotation-input { width: 100%; height: 100%; min-height: 0; padding: 2px 3px; border: 1px dashed transparent; border-radius: 4px; background: transparent; font-family: var(--font-sans); line-height: 1.28; resize: none; overflow: hidden; overflow-wrap: anywhere; }
 .text-annotation-input:hover { border-color: color-mix(in oklab, var(--note-color) 45%, transparent); }
 .text-annotation-input:focus { outline: none; }
 .text-annotation-box.is-selected .text-annotation-input { border-style: solid; border-color: var(--ink); background: oklch(1 0 0 / .6); }
+.text-annotation-box.is-fixed-height .text-annotation-input { overflow: auto; }
 .text-annotation-drag-handle { position: absolute; z-index: 1; top: 2px; right: 2px; display: grid; width: 18px; height: 15px; padding: 0; place-items: center; border: 0; border-radius: 3px; opacity: 0; color: var(--ink-soft); background: oklch(1 0 0 / .76); cursor: grab; touch-action: none; transition: opacity 120ms ease-out, background 120ms ease-out; }
 .text-annotation-box:hover .text-annotation-drag-handle, .text-annotation-box.is-selected .text-annotation-drag-handle { opacity: 1; }
 .text-annotation-drag-handle:active { cursor: grabbing; }
