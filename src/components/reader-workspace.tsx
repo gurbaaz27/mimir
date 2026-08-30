@@ -346,7 +346,7 @@ export function ReaderWorkspace() {
             <SelectionBar />
           </section>
         </div>
-          <ChatSidebar open={chatOpen} onClose={() => setChatOpen(false)} />
+          <ChatSidebar documentId={activeDocument.id} open={chatOpen} onClose={() => setChatOpen(false)} />
         </div>
 
         {toast && (

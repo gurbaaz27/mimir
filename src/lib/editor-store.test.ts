@@ -22,6 +22,7 @@ describe('shared editor command path', () => {
   beforeEach(async () => {
     await db.documents.clear()
     await db.annotations.clear()
+    await db.chatHistories.clear()
     editorStore.setState({
       annotations: [],
       history: [],
@@ -82,5 +83,31 @@ describe('shared editor command path', () => {
     expect(updated.lastModifiedBy).toBe('webmcp')
     expect(updated.createdBy).toBe('human')
     expect(editorStore.getState().history).toHaveLength(2)
+  })
+
+  it('removes persisted chat history when its document is deleted', async () => {
+    const record: DocumentRecord = {
+      id: 'document-1',
+      fingerprint: 'fingerprint',
+      name: 'research-notes.pdf',
+      size: 1024,
+      pageCount: 12,
+      blob: new Blob(['pdf']),
+      createdAt: new Date().toISOString(),
+      lastOpenedAt: new Date().toISOString(),
+      lastPage: 1,
+      zoom: 1,
+      rotation: 0,
+      indexedPages: 0,
+    }
+    await db.documents.add(record)
+    await db.chatHistories.add({
+      documentId: record.id,
+      messages: [{ id: 'message-1', role: 'user', parts: [{ type: 'text', content: 'Hello' }] }],
+    })
+
+    await editorStore.getState().deleteDocument(record.id)
+
+    expect(await db.chatHistories.get(record.id)).toBeUndefined()
   })
 })
