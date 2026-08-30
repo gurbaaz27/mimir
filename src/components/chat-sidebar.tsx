@@ -95,7 +95,7 @@ export function ChatSidebar({ open, onClose }: { open: boolean; onClose: () => v
       aria-hidden={!open}
       inert={!open ? true : undefined}
     >
-      <div className="flex w-[352px] max-w-full min-w-0 flex-1 flex-col">
+      <div className="flex h-full min-h-0 w-[352px] max-w-full min-w-0 flex-1 flex-col">
         <header className="flex h-[46px] shrink-0 items-center gap-2 border-b border-line px-3">
           <BotIcon size={16} />
           <strong className="flex-1 font-display text-[13px] font-[600] tracking-[-.02em]">Ask Mimir</strong>
