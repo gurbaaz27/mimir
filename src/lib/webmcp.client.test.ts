@@ -50,7 +50,18 @@ function ink(author: Annotation['createdBy']): Annotation {
  * A stand-in for a rendered PDF page. jsdom has no layout, so the geometry the
  * anchoring code reads is stubbed to fixed, plausible rectangles.
  */
-function mountPage(pageNumber: number, chunks: Array<string>) {
+/**
+ * A span in a rendered text layer, and whether it touches the one before it.
+ * pdf.js splits a token across spans wherever kerning demands it, and those
+ * fragments abut; separate words are set a space apart. Quote anchoring reads
+ * that geometry, so the fixture has to carry it.
+ */
+type Chunk = string | { text: string; abutsPrevious: true }
+
+const CHARACTER_WIDTH = 7
+const SPACE_WIDTH = 7
+
+function mountPage(pageNumber: number, chunks: Array<Chunk>) {
   const page = document.createElement('div')
   page.setAttribute('data-page-number', String(pageNumber))
   const layer = document.createElement('div')
@@ -58,10 +69,19 @@ function mountPage(pageNumber: number, chunks: Array<string>) {
   // class here is what let the Tailwind migration break quote anchoring in the
   // real app while this suite stayed green.
   layer.setAttribute(textLayerAttribute, '')
-  for (const chunk of chunks) {
+  let x = 0
+  for (const [index, chunk] of chunks.entries()) {
+    const text = typeof chunk === 'string' ? chunk : chunk.text
+    const abutsPrevious = typeof chunk === 'string' ? false : chunk.abutsPrevious
+    if (index > 0 && !abutsPrevious) x += SPACE_WIDTH
     const span = document.createElement('span')
-    span.textContent = chunk
+    span.textContent = text
+    // Read back by the layout stub below, standing in for what pdf.js would
+    // have positioned.
+    span.dataset.left = String(x)
+    span.dataset.width = String(text.length * CHARACTER_WIDTH)
     layer.append(span)
+    x += text.length * CHARACTER_WIDTH
   }
   page.append(layer)
   document.body.append(page)
@@ -69,8 +89,16 @@ function mountPage(pageNumber: number, chunks: Array<string>) {
 }
 
 function stubLayout() {
-  Element.prototype.getBoundingClientRect = () =>
-    ({ left: 0, top: 0, right: 600, bottom: 800, width: 600, height: 800, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+  // jsdom has no layout. A span reports the box mountPage gave it; everything
+  // else reports the page.
+  Element.prototype.getBoundingClientRect = function (this: Element) {
+    const left = Number((this as HTMLElement).dataset?.left)
+    if (Number.isFinite(left)) {
+      const width = Number((this as HTMLElement).dataset.width)
+      return { left, top: 100, right: left + width, bottom: 112, width, height: 12, x: left, y: 100, toJSON: () => ({}) } as DOMRect
+    }
+    return { left: 0, top: 0, right: 600, bottom: 800, width: 600, height: 800, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+  }
   Range.prototype.getClientRects = () =>
     [{ left: 50, top: 100, right: 150, bottom: 112, width: 100, height: 12, x: 50, y: 100, toJSON: () => ({}) }] as unknown as DOMRectList
 }
@@ -337,20 +365,41 @@ describe('anchoring marks to what the page actually says', () => {
 
   it('does not bridge a space the page really has when falling back', async () => {
     // Reached only when the on-screen reading finds nothing, which is where the
-    // split-token fallback runs. It drops the separator this code synthesizes
-    // between text nodes — and only that. Dropping whitespace wholesale would
-    // join "NON DUTY" into "NONDUTY" and mark a passage that does not read that
-    // way on the page.
+    // split-token fallback runs. It must not join across a space inside a span.
     mountPage(1, ['Reply on NON DUTY PERIOD regular'])
 
     const message = await failureOf('create_annotations', {
-      annotations: [
-        { kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'NONDUTY' } },
-      ],
+      annotations: [{ kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'NONDUTY' } }],
     })
 
     expect(message).toMatch(/was not found/)
     expect(editorStore.getState().annotations).toEqual([])
+  })
+
+  it('keeps the word boundary between two spaced words in separate spans', async () => {
+    // The pair the fallback must leave alone: separate spans, but set a space
+    // apart on the page. Joining them would accept a quote that omits the
+    // visible space and anchor to a passage that does not read that way —
+    // reported to the caller as a success.
+    mountPage(1, ['NON', 'DUTY'])
+
+    const message = await failureOf('create_annotations', {
+      annotations: [{ kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'NONDUTY' } }],
+    })
+
+    expect(message).toMatch(/was not found/)
+    expect(editorStore.getState().annotations).toEqual([])
+  })
+
+  it('joins two spans that pdf.js set touching', async () => {
+    mountPage(1, ['NON', { text: 'DUTY', abutsPrevious: true }])
+
+    const result = await run('create_annotations', {
+      annotations: [{ kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'NONDUTY' } }],
+    })
+
+    expect(result.failed).toEqual([])
+    expect(result.created).toEqual([expect.objectContaining({ kind: 'markup', pageNumber: 1 })])
   })
 
   it('still matches a real gap that the page genuinely contains', async () => {
@@ -370,7 +419,7 @@ describe('anchoring marks to what the page actually says', () => {
     // between nodes then lands mid-token, so "D-9519/T1" reads as
     // "D-9519 /T1" and never matches — while search_document, reading the
     // extracted page text rather than the DOM, insists it is right there.
-    mountPage(1, ['Decided', '5', 'D-9519', '/T1', 'CS', '193', 'NEGLIGENCE IN DUTY'])
+    mountPage(1, ['Decided', '5', 'D-9519', { text: '/T1', abutsPrevious: true }, 'CS', '193', 'NEGLIGENCE IN DUTY'])
 
     const created = await run('create_annotations', {
       annotations: [

@@ -187,22 +187,52 @@ async function resolveQuote(documentId: string, pageNumber: number, target: Quot
   const layer = page.querySelector<HTMLElement>(textLayerSelector)
   if (!layer) throw new ToolError(`Page ${pageNumber} has no selectable text.`)
   const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
-  const nodes: Array<{ node: Text; start: number; end: number }> = []
+  const nodes: Array<{ node: Text; start: number; end: number; rect: DOMRect | null }> = []
   let rawText = ''
   // Adjacent text nodes are joined with a space so words from separate spans do
-  // not run together. That space is this function's invention, not the page's,
-  // and the projections below need to tell the two apart.
-  const synthetic = new Set<number>()
+  // not run together. That space is this function's invention, not the page's.
+  // Record where each one sits, and which pair it came between, so the fallback
+  // below can ask whether the two spans were actually touching.
+  const separators: Array<{ index: number; before: number }> = []
   let node = walker.nextNode()
   while (node) {
     const textNode = node as Text
     const value = textNode.data
-    nodes.push({ node: textNode, start: rawText.length, end: rawText.length + value.length })
+    nodes.push({
+      node: textNode,
+      start: rawText.length,
+      end: rawText.length + value.length,
+      rect: textNode.parentElement?.getBoundingClientRect() ?? null,
+    })
     rawText += value
-    synthetic.add(rawText.length)
+    separators.push({ index: rawText.length, before: nodes.length - 1 })
     rawText += ' '
     node = walker.nextNode()
   }
+
+  /**
+   * Did these two spans touch on the page? pdf.js splits a token across spans
+   * wherever kerning demands it, and those fragments abut; two separate words
+   * are set a space apart. Geometry is the only thing that tells them apart —
+   * the text alone cannot, which is why the separator between "Decided" and "5"
+   * must survive while the one inside "D-9519" "/T1" must not.
+   */
+  const abuts = (left: DOMRect | null, right: DOMRect | null) => {
+    if (!left || !right) return false
+    const lineHeight = Math.min(left.height, right.height)
+    if (!lineHeight) return false
+    if (Math.abs(right.top - left.top) > lineHeight * 0.5) return false
+    const gap = right.left - left.right
+    return gap < lineHeight * 0.2 && gap > -lineHeight
+  }
+
+  // Only a separator between two touching spans is this function's invention.
+  // Every other one stands for a space the reader can see.
+  const droppable = new Set(
+    separators
+      .filter(({ before }) => abuts(nodes[before]?.rect ?? null, nodes[before + 1]?.rect ?? null))
+      .map(({ index }) => index),
+  )
 
   // Two ways of reading the same page, tried in order.
   //
@@ -218,17 +248,18 @@ async function resolveQuote(documentId: string, pageNumber: number, target: Quot
   // it and told the caller it was there. "joined" drops the synthesized
   // separator so a split token resolves.
   //
-  // Only the synthesized separator. Dropping whitespace wholesale would let a
-  // quote match across a gap the page really has — "in duty" would anchor
-  // inside "main duty roster" — which silently marks the wrong passage. The
-  // needle keeps its spaces in both projections for the same reason.
+  // Only separators between spans that touched. Dropping them all would erase
+  // the boundary between two genuinely spaced words that happen to sit in
+  // separate spans, and a quote written without that space would then anchor to
+  // a passage that does not read that way — reported as a success. The needle
+  // keeps its own spaces in both projections for the same reason.
   const projections = (['spaced', 'joined'] as const).map((mode) => {
     let text = ''
     const toRaw: Array<number> = []
     for (let index = 0; index < rawText.length; index += 1) {
       const character = rawText[index]!
       if (/\s/.test(character)) {
-        if (mode === 'joined' && synthetic.has(index)) continue
+        if (mode === 'joined' && droppable.has(index)) continue
         if (text && !text.endsWith(' ')) {
           text += ' '
           toRaw.push(index)
