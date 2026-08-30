@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchServerSentEvents, createChatClientOptions } from '@tanstack/ai-client'
 import { useChat } from '@tanstack/ai-react'
+import { ThinkingState } from '@aicss/react/thinking-state'
 import { LoaderCircle } from 'lucide-react'
 import { Dialog } from 'radix-ui'
 import { ArrowUpRightIcon, BotIcon, TrashIcon, XIcon, ZapIcon } from '#/components/icons'
@@ -182,7 +183,7 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
               ))}
               {isLoading && (
                 <div className="flex items-center gap-2 text-[11px] text-muted">
-                  <LoaderCircle className="size-3.5 animate-spin-slow" /> Thinking…
+                  <ThinkingState />
                 </div>
               )}
             </div>
