@@ -139,9 +139,26 @@ async function persistChange(before: Array<Annotation>, after: Array<Annotation>
 
 let documentOpenRequest = 0
 
+const sidebarOpenStorageKey = 'mimir:sidebar-open'
+
 function shouldOpenSidebarByDefault() {
   if (typeof window === 'undefined') return true
+  try {
+    const saved = window.localStorage.getItem(sidebarOpenStorageKey)
+    if (saved === 'true') return true
+    if (saved === 'false') return false
+  } catch {
+    // Fall back to the responsive default when storage is unavailable.
+  }
   return !window.matchMedia?.('(max-width: 820px)').matches
+}
+
+function persistSidebarOpen(sidebarOpen: boolean) {
+  try {
+    window.localStorage.setItem(sidebarOpenStorageKey, String(sidebarOpen))
+  } catch {
+    // The sidebar still works for this session when storage is unavailable.
+  }
 }
 
 function applyChangeToList(
@@ -341,7 +358,10 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       set({ annotationDrag: null })
     }
   },
-  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+  setSidebarOpen: (sidebarOpen) => {
+    set({ sidebarOpen })
+    persistSidebarOpen(sidebarOpen)
+  },
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   notify: (toast) => {
     set({ toast })
