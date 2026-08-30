@@ -189,34 +189,46 @@ async function resolveQuote(documentId: string, pageNumber: number, target: Quot
   const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
   const nodes: Array<{ node: Text; start: number; end: number }> = []
   let rawText = ''
+  // Adjacent text nodes are joined with a space so words from separate spans do
+  // not run together. That space is this function's invention, not the page's,
+  // and the projections below need to tell the two apart.
+  const synthetic = new Set<number>()
   let node = walker.nextNode()
   while (node) {
     const textNode = node as Text
     const value = textNode.data
     nodes.push({ node: textNode, start: rawText.length, end: rawText.length + value.length })
-    rawText += `${value} `
+    rawText += value
+    synthetic.add(rawText.length)
+    rawText += ' '
     node = walker.nextNode()
   }
 
   // Two ways of reading the same page, tried in order.
   //
-  // "collapse" mirrors how the text reads on screen: runs of whitespace become
-  // a single space. That is what a quote lifted from search_document matches.
+  // "spaced" mirrors how the text reads on screen: every gap, real or
+  // synthesized, is a single space. That is what a quote lifted from
+  // search_document matches, so it is tried first.
   //
   // It is not always enough. A text layer is a bag of absolutely positioned
   // spans, and pdf.js splits a token across them wherever kerning demands it,
-  // so the separator this function puts between nodes can land mid-token:
-  // "D-9519" + "/T1" reads as "D-9519 /T1", and no quote of "D-9519/T1" will
-  // ever match it — even though search_document, which reads the extracted page
-  // text rather than the DOM, found it and told the caller it was there.
-  // "strip" drops whitespace altogether so a split token still resolves.
-  const projections = (['collapse', 'strip'] as const).map((mode) => {
+  // so the separator above can land mid-token: "D-9519" + "/T1" reads as
+  // "D-9519 /T1", and no quote of "D-9519/T1" will ever match — even though
+  // search_document, reading the extracted page text rather than the DOM, found
+  // it and told the caller it was there. "joined" drops the synthesized
+  // separator so a split token resolves.
+  //
+  // Only the synthesized separator. Dropping whitespace wholesale would let a
+  // quote match across a gap the page really has — "in duty" would anchor
+  // inside "main duty roster" — which silently marks the wrong passage. The
+  // needle keeps its spaces in both projections for the same reason.
+  const projections = (['spaced', 'joined'] as const).map((mode) => {
     let text = ''
     const toRaw: Array<number> = []
     for (let index = 0; index < rawText.length; index += 1) {
       const character = rawText[index]!
       if (/\s/.test(character)) {
-        if (mode === 'strip') continue
+        if (mode === 'joined' && synthetic.has(index)) continue
         if (text && !text.endsWith(' ')) {
           text += ' '
           toRaw.push(index)
@@ -226,21 +238,18 @@ async function resolveQuote(documentId: string, pageNumber: number, target: Quot
         toRaw.push(index)
       }
     }
-    const shape = (value: string) => {
-      const collapsed = collapseWhitespace(value).toLocaleLowerCase()
-      return mode === 'strip' ? collapsed.replace(/\s+/g, '') : collapsed
-    }
-    return { haystack: text.toLocaleLowerCase(), toRaw, shape }
+    return { haystack: text.toLocaleLowerCase(), toRaw }
   })
 
   let matches: Array<number> = []
   let needle = ''
   let normalizedToRaw: Array<number> = []
+  const shape = (value: string) => collapseWhitespace(value).toLocaleLowerCase()
+  const candidate = shape(target.quote)
+  const prefix = target.prefix ? shape(target.prefix) : ''
+  const suffix = target.suffix ? shape(target.suffix) : ''
   for (const projection of projections) {
-    const candidate = projection.shape(target.quote)
-    if (!candidate) continue
-    const prefix = target.prefix ? projection.shape(target.prefix) : ''
-    const suffix = target.suffix ? projection.shape(target.suffix) : ''
+    if (!candidate) break
     const found: Array<number> = []
     let from = 0
     while (from <= projection.haystack.length) {

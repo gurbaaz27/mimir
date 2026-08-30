@@ -335,6 +335,35 @@ describe('anchoring marks to what the page actually says', () => {
     expect(message).not.toMatch(/most likely a scan/)
   })
 
+  it('does not bridge a space the page really has when falling back', async () => {
+    // Reached only when the on-screen reading finds nothing, which is where the
+    // split-token fallback runs. It drops the separator this code synthesizes
+    // between text nodes — and only that. Dropping whitespace wholesale would
+    // join "NON DUTY" into "NONDUTY" and mark a passage that does not read that
+    // way on the page.
+    mountPage(1, ['Reply on NON DUTY PERIOD regular'])
+
+    const message = await failureOf('create_annotations', {
+      annotations: [
+        { kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'NONDUTY' } },
+      ],
+    })
+
+    expect(message).toMatch(/was not found/)
+    expect(editorStore.getState().annotations).toEqual([])
+  })
+
+  it('still matches a real gap that the page genuinely contains', async () => {
+    mountPage(1, ['NEGLIGENCE IN DUTY reported'])
+
+    const result = await run('create_annotations', {
+      annotations: [{ kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'in duty' } }],
+    })
+
+    expect(result.failed).toEqual([])
+    expect(result.created).toEqual([expect.objectContaining({ kind: 'markup', pageNumber: 1 })])
+  })
+
   it('anchors a quote that pdf.js split across text-layer spans', async () => {
     // The regression this guards: a text layer is absolutely positioned spans,
     // and kerning routinely breaks a token across two of them. The separator
