@@ -132,7 +132,7 @@ export function IconButton({ label, icon: Icon, size = 17, shortcut, active, dan
 }
 
 export const menuContentClass = 'z-40 min-w-44 animate-menu-in rounded-xl border border-line bg-paper p-[5px] shadow-menu'
-export const menuItemClass = 'flex min-h-[34px] items-center gap-[9px] rounded-lg px-2.5 text-xs outline-none data-[highlighted]:bg-sunken'
+export const menuItemClass = 'flex min-h-[34px] items-center gap-[9px] rounded-lg px-2.5 text-xs outline-none data-[highlighted]:bg-sunken data-[disabled]:pointer-events-none data-[disabled]:text-faint'
 export const dangerMenuItemClass = 'text-danger data-[highlighted]:bg-[oklch(.96_.02_28)]'
 export const menuSeparatorClass = 'm-1 h-px bg-line'
 export const dialogOverlayClass = 'fixed inset-0 z-60 animate-fade-in bg-[oklch(.2_.008_60/.34)] backdrop-blur-[2px]'

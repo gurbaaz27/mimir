@@ -12,6 +12,7 @@ import {
   ChevronDownIcon,
   DownloadIcon,
   MinusIcon,
+  MoreIcon,
   PanelLeftOpenIcon,
   PlusIcon,
   RedoIcon,
@@ -287,6 +288,27 @@ export function ReaderWorkspace() {
             <IconButton className="max-[600px]:hidden" label="Rotate clockwise" icon={RotateCwIcon} onClick={() => setRotation(rotation + 90)} />
             <IconButton className="max-[600px]:hidden" label="Undo" shortcut="⌘Z" icon={UndoIcon} disabled={!history.length} onClick={() => void undo()} />
             <IconButton className="max-[600px]:hidden" label="Redo" shortcut="⇧⌘Z" icon={RedoIcon} disabled={!future.length} onClick={() => void redo()} />
+            {/* The header has no room for these below 600px, so touch users reach them here instead. */}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button className="hidden size-[34px] shrink-0 place-items-center rounded-[9px] border-0 bg-transparent p-0 text-ink-soft transition-[background,color,transform] duration-150 ease-out hover:bg-sunken hover:text-ink active:scale-90 max-[600px]:inline-grid" type="button" aria-label="More actions">
+                  <MoreIcon size={17} />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className={menuContentClass} sideOffset={7} align="end">
+                  <DropdownMenu.Item className={menuItemClass} onSelect={() => setRotation(rotation + 90)}>
+                    <RotateCwIcon size={15} /> Rotate clockwise
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item className={menuItemClass} disabled={!history.length} onSelect={() => void undo()}>
+                    <UndoIcon size={15} /> Undo
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item className={menuItemClass} disabled={!future.length} onSelect={() => void redo()}>
+                    <RedoIcon size={15} /> Redo
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
             <Button size="mobileIcon" className="ml-[9px] min-h-[34px] px-[15px] text-[12.5px] font-[570] max-[600px]:[&_.icon-glyph]:flex max-[600px]:[&_.icon-glyph]:size-4 max-[600px]:[&_.icon-glyph]:shrink-0 max-[600px]:[&_.icon-glyph]:items-center max-[600px]:[&_.icon-glyph]:justify-center" onClick={() => setExportOpen(true)}><DownloadIcon size={16} /> Export</Button>
           </div>
         </header>
