@@ -136,7 +136,11 @@ export const menuItemClass = 'flex min-h-[34px] items-center gap-[9px] rounded-l
 export const dangerMenuItemClass = 'text-danger data-[highlighted]:bg-[oklch(.96_.02_28)]'
 export const menuSeparatorClass = 'm-1 h-px bg-line'
 export const dialogOverlayClass = 'fixed inset-0 z-60 animate-fade-in bg-[oklch(.2_.008_60/.34)] backdrop-blur-[2px]'
-export const dialogSurfaceClass = 'fixed top-1/2 left-1/2 z-70 -translate-1/2 animate-dialog-in rounded-[20px] border border-line bg-paper shadow-[0_24px_80px_oklch(.15_.01_60/.26)]'
+// Keep centering in `transform` because the dialog entrance animation also
+// owns `transform`. Tailwind's `-translate-1/2` uses the independent CSS
+// `translate` property, which combines with the animation and briefly puts
+// the dialog near the top-left before the animation settles.
+export const dialogSurfaceClass = 'fixed top-1/2 left-1/2 z-70 [transform:translate(-50%,-50%)] animate-dialog-in rounded-[20px] border border-line bg-paper shadow-[0_24px_80px_oklch(.15_.01_60/.26)]'
 
 /** A document title prefers metadata and never exposes a raw `.pdf` suffix. */
 export function documentLabel(record: { title?: string; name?: string }) {
