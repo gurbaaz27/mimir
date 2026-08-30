@@ -181,12 +181,15 @@ export async function exportAnnotatedPdf(
           }
         }
       } else if (annotation.kind === 'text') {
+        const fontSize = annotation.style.fontSize ?? 12
         page.drawText(annotation.body || ' ', {
           x: annotation.bounds.x * width,
-          y: (1 - annotation.bounds.y - annotation.bounds.height) * height,
+          // Text boxes are top-aligned in the editor. Their baseline must not
+          // move when a user makes the box taller.
+          y: (1 - annotation.bounds.y) * height - fontSize,
           maxWidth: annotation.bounds.width * width,
-          size: annotation.style.fontSize ?? 12,
-          lineHeight: (annotation.style.fontSize ?? 12) * 1.25,
+          size: fontSize,
+          lineHeight: fontSize * 1.25,
           font: embeddedFont,
           color,
           opacity,

@@ -4,6 +4,7 @@ import {
   annotationSchema,
   annotationSidecarSchema,
   createAnnotationBase,
+  translateAnnotation,
   type Annotation,
 } from './annotations'
 
@@ -59,6 +60,30 @@ describe('annotation schema', () => {
     expect(bounds?.y).toBeCloseTo(0.1)
     expect(bounds?.width).toBeCloseTo(0.5)
     expect(bounds?.height).toBeCloseTo(0.8)
+  })
+
+  it('uses persisted note dimensions and keeps them aligned when moving', () => {
+    const note = annotationSchema.parse({
+      ...createAnnotationBase('document-1', 1, 'human', style),
+      kind: 'note',
+      point: { x: 0.1, y: 0.2 },
+      bounds: { x: 0.1, y: 0.2, width: 0.3, height: 0.15 },
+      body: 'Resizable note',
+      resolved: false,
+    })
+
+    expect(note.kind).toBe('note')
+    if (note.kind !== 'note') throw new Error('Fixture should be a note')
+    expect(annotationBounds(note)).toEqual(note.bounds)
+    const moved = translateAnnotation(note, 0.2, 0.1)
+    expect(moved.kind).toBe('note')
+    if (moved.kind !== 'note') throw new Error('Fixture should be a note')
+    expect(moved.point.x).toBeCloseTo(0.3)
+    expect(moved.point.y).toBeCloseTo(0.3)
+    expect(moved.bounds?.x).toBeCloseTo(0.3)
+    expect(moved.bounds?.y).toBeCloseTo(0.3)
+    expect(moved.bounds?.width).toBeCloseTo(0.3)
+    expect(moved.bounds?.height).toBeCloseTo(0.15)
   })
 })
 
