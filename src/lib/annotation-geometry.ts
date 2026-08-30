@@ -6,6 +6,67 @@ export type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 export const resizeHandles: ReadonlyArray<ResizeHandle> = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 export const defaultNoteSizePx = { width: 178, height: 118 } as const
 
+/**
+ * Browser ranges over PDF.js text layers can split one visual line into many
+ * rectangles, often one per text item. Keep those fragments from producing
+ * seams or double-painted edges while preserving actual line breaks.
+ *
+ * Underlines and strikeouts opt into bridging normal inline gaps so spaces do
+ * not interrupt the mark. Highlights only merge touching/overlapping fragments
+ * (plus a small fractional-pixel tolerance), so they do not paint across wide
+ * layout gaps such as columns.
+ */
+export function mergeTextQuads(
+  quads: ReadonlyArray<NormalizedRect>,
+  bridgeInlineGaps = false,
+): Array<NormalizedRect> {
+  if (quads.length < 2) return [...quads]
+
+  const sorted = [...quads].sort((first, second) => first.y - second.y || first.x - second.x)
+  const lines: Array<{ baseline: number; height: number; quads: Array<NormalizedRect> }> = []
+
+  for (const quad of sorted) {
+    const baseline = quad.y + quad.height
+    const line = lines.find(
+      (candidate) => Math.abs(candidate.baseline - baseline) <= Math.max(candidate.height, quad.height) * 0.35,
+    )
+    if (line) {
+      line.quads.push(quad)
+      line.baseline = (line.baseline * (line.quads.length - 1) + baseline) / line.quads.length
+      line.height = Math.max(line.height, quad.height)
+    } else {
+      lines.push({ baseline, height: quad.height, quads: [quad] })
+    }
+  }
+
+  return lines.flatMap((line) => {
+    const lineQuads = [...line.quads].sort((first, second) => first.x - second.x)
+    const merged: Array<NormalizedRect> = []
+    for (const quad of lineQuads) {
+      const previous = merged.at(-1)
+      if (!previous) {
+        merged.push({ ...quad })
+        continue
+      }
+
+      const gap = quad.x - (previous.x + previous.width)
+      const gapTolerance = Math.max(previous.height, quad.height) * (bridgeInlineGaps ? 0.75 : 0.08)
+      if (gap > gapTolerance) {
+        merged.push({ ...quad })
+        continue
+      }
+
+      const right = Math.max(previous.x + previous.width, quad.x + quad.width)
+      const bottom = Math.max(previous.y + previous.height, quad.y + quad.height)
+      previous.x = Math.min(previous.x, quad.x)
+      previous.y = Math.min(previous.y, quad.y)
+      previous.width = right - previous.x
+      previous.height = bottom - previous.y
+    }
+    return merged
+  })
+}
+
 const handleDirections: Record<ResizeHandle, { x: -1 | 0 | 1; y: -1 | 0 | 1 }> = {
   nw: { x: -1, y: -1 },
   n: { x: 0, y: -1 },

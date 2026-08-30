@@ -1,7 +1,13 @@
 import { useMemo, useRef, useState, type PointerEvent } from 'react'
 import type { Annotation, Point } from '#/lib/annotations'
 import { annotationBounds, annotationColors, createAnnotationBase } from '#/lib/annotations'
-import { constrainDrawingEnd, defaultNoteSizePx, resizeRectFromHandle, type ResizeHandle } from '#/lib/annotation-geometry'
+import {
+  constrainDrawingEnd,
+  defaultNoteSizePx,
+  mergeTextQuads,
+  resizeRectFromHandle,
+  type ResizeHandle,
+} from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
 import { EndpointHandles, ResizeHandles } from './annotation-resize-handles'
 
@@ -68,7 +74,7 @@ function AnnotationGlyph({
       onPointerCancel={onPointerUp}
     >
       {annotation.kind === 'markup' &&
-        annotation.quads.map((quad, index) => {
+        mergeTextQuads(annotation.quads, annotation.markup !== 'highlight').map((quad, index) => {
           if (annotation.markup === 'highlight') {
             return <rect key={index} {...quad} fill={annotation.style.color} opacity={annotation.style.opacity} />
           }

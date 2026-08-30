@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { TextLayer, type PDFDocumentProxy, type RenderTask } from 'pdfjs-dist'
 import 'pdfjs-dist/web/pdf_viewer.css'
 import { createAnnotationBase, type Annotation, type MarkupType } from '#/lib/annotations'
+import { mergeTextQuads } from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
 import { AnnotationOverlay } from './annotation-overlay'
 import { NoteLayer } from './note-layer'
@@ -93,7 +94,8 @@ export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations, onPageWi
     const range = selection.getRangeAt(0)
     if (!pageRef.current.contains(range.commonAncestorContainer)) return
     const pageRect = pageRef.current.getBoundingClientRect()
-    const quads = Array.from(range.getClientRects())
+    const markup = tool as MarkupType
+    const rawQuads = Array.from(range.getClientRects())
       .filter((rect) => rect.width > 1 && rect.height > 1)
       .map((rect) => ({
         x: (rect.left - pageRect.left) / pageRect.width,
@@ -102,9 +104,9 @@ export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations, onPageWi
         height: rect.height / pageRect.height,
       }))
       .filter((quad) => quad.x >= 0 && quad.y >= 0 && quad.x + quad.width <= 1.01 && quad.y + quad.height <= 1.01)
+    const quads = mergeTextQuads(rawQuads, markup !== 'highlight')
     const selectedText = selection.toString().trim()
     if (!quads.length || !selectedText) return
-    const markup = tool as MarkupType
     const base = createAnnotationBase(activeDocument.id, pageNumber, 'human', {
       color,
       opacity: markup === 'highlight' ? 0.34 : 0.92,

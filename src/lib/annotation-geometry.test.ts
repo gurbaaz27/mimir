@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { constrainDrawingEnd, pointForResizeHandle, resizeRectFromHandle } from './annotation-geometry'
+import { constrainDrawingEnd, mergeTextQuads, pointForResizeHandle, resizeRectFromHandle } from './annotation-geometry'
+
+describe('text markup geometry', () => {
+  it('merges overlapping fragments on the same line without merging separate lines', () => {
+    expect(
+      mergeTextQuads([
+        { x: 0.1, y: 0.2, width: 0.2, height: 0.03 },
+        { x: 0.295, y: 0.201, width: 0.2, height: 0.03 },
+        { x: 0.1, y: 0.25, width: 0.2, height: 0.03 },
+      ]),
+    ).toEqual([
+      { x: 0.1, y: 0.2, width: 0.395, height: 0.031 },
+      { x: 0.1, y: 0.25, width: 0.2, height: 0.03 },
+    ])
+  })
+
+  it('bridges normal inline gaps for continuous underlines', () => {
+    const merged = mergeTextQuads([
+      { x: 0.1, y: 0.2, width: 0.2, height: 0.03 },
+      { x: 0.32, y: 0.2, width: 0.2, height: 0.03 },
+      { x: 0.7, y: 0.2, width: 0.1, height: 0.03 },
+    ], true)
+
+    expect(merged).toHaveLength(2)
+    expect(merged[0]).toMatchObject({ x: 0.1, y: 0.2, height: 0.03 })
+    expect(merged[0]?.width).toBeCloseTo(0.42)
+    expect(merged[1]).toEqual({ x: 0.7, y: 0.2, width: 0.1, height: 0.03 })
+  })
+})
 
 describe('constrained shape drawing', () => {
   it('keeps rectangles square in page pixels', () => {

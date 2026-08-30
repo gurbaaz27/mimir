@@ -7,6 +7,7 @@ import {
   type Annotation,
   type AnnotationSidecar,
 } from './annotations'
+import { mergeTextQuads } from './annotation-geometry'
 import type { DocumentRecord } from './db.client'
 
 function parseColor(color: string) {
@@ -98,7 +99,7 @@ export async function exportAnnotatedPdf(
       const color = parseColor(annotation.style.color)
       const opacity = annotation.style.opacity
       if (annotation.kind === 'markup') {
-        for (const quad of annotation.quads) {
+        for (const quad of mergeTextQuads(annotation.quads, annotation.markup !== 'highlight')) {
           const x = quad.x * width
           const y = (1 - quad.y - quad.height) * height
           if (annotation.markup === 'highlight') {

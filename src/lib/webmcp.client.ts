@@ -35,6 +35,7 @@ import {
   ToolError,
   updateAnnotationsInput,
 } from './webmcp-contract'
+import { mergeTextQuads } from './annotation-geometry'
 
 /** Navigates the app to a document's reader route. Supplied by the mounting component. */
 export type OpenDocumentNavigator = (pathSegment: string) => void | Promise<void>
@@ -151,7 +152,7 @@ function collapseWhitespace(value: string) {
  * Map a quote to normalized page geometry by walking the rendered text layer.
  * A miss reports where the quote actually occurs so the agent can retry.
  */
-async function resolveQuote(documentId: string, pageNumber: number, target: QuoteAnchor) {
+async function resolveQuote(documentId: string, pageNumber: number, target: QuoteAnchor, bridgeInlineGaps = false) {
   const page = await waitForTextLayer(pageNumber)
   const layer = page.querySelector<HTMLElement>('.textLayer')
   if (!layer) throw new ToolError(`Page ${pageNumber} has no selectable text.`)
@@ -234,7 +235,7 @@ async function resolveQuote(documentId: string, pageNumber: number, target: Quot
   range.setStart(startInfo.node, rawStart - startInfo.start)
   range.setEnd(endInfo.node, rawEnd - endInfo.start)
   const pageRect = page.getBoundingClientRect()
-  const quads = Array.from(range.getClientRects())
+  const rawQuads = Array.from(range.getClientRects())
     .filter((rect) => rect.width > 1 && rect.height > 1)
     .map((rect) => ({
       x: (rect.left - pageRect.left) / pageRect.width,
@@ -242,6 +243,7 @@ async function resolveQuote(documentId: string, pageNumber: number, target: Quot
       width: rect.width / pageRect.width,
       height: rect.height / pageRect.height,
     }))
+  const quads = mergeTextQuads(rawQuads, bridgeInlineGaps)
   if (!quads.length) throw new ToolError('The quote is present but has no visible geometry.')
   return quads
 }
@@ -616,7 +618,7 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
             }
             const base = createAnnotationBase(documentId, item.pageNumber, 'webmcp', defaultStyle(item.style))
             if (item.kind === 'markup') {
-              const quads = await resolveQuote(documentId, item.pageNumber, item.target)
+              const quads = await resolveQuote(documentId, item.pageNumber, item.target, item.markup !== 'highlight')
               created.push(
                 annotationSchema.parse({
                   ...base,
