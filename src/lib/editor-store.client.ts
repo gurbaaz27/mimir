@@ -284,10 +284,11 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   },
 
   deleteDocument: async (id) => {
-    await db.transaction('rw', db.documents, db.annotations, db.textPages, async () => {
+    await db.transaction('rw', db.documents, db.annotations, db.textPages, db.chatHistories, async () => {
       await db.documents.delete(id)
       await db.annotations.where('documentId').equals(id).delete()
       await db.textPages.where('documentId').equals(id).delete()
+      await db.chatHistories.delete(id)
     })
     if (get().activeDocument?.id === id) await get().closeDocument()
     await get().loadLibrary()

@@ -1,20 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchServerSentEvents, createChatClientOptions } from '@tanstack/ai-client'
 import { useChat } from '@tanstack/ai-react'
 import { LoaderCircle } from 'lucide-react'
-import { ArrowUpRightIcon, BotIcon, XIcon, ZapIcon } from '#/components/icons'
+import { Dialog } from 'radix-ui'
+import { ArrowUpRightIcon, BotIcon, TrashIcon, XIcon, ZapIcon } from '#/components/icons'
 import { ChatMarkdown } from './chat-markdown'
 import { webmcpClientTools } from '#/ai/client-tools'
 import { canExecuteOverWebmcp } from '#/ai/webmcp-bridge.client'
+import { chatPersistence } from '#/lib/db.client'
 import { cn } from '#/lib/utils'
-import { IconButton } from './ui'
+import { Button, IconButton, dialogOverlayClass, dialogSurfaceClass } from './ui'
 
-// Module scope on purpose: the tool implementations close over nothing from
-// React, so rebuilding these options per render would only churn the client.
-const chatOptions = createChatClientOptions({
-  connection: fetchServerSentEvents('/api/chat'),
-  tools: webmcpClientTools,
-})
+// Module scope on purpose: the transport and tool implementations close over
+// nothing from React and can be shared by every document conversation.
+const chatConnection = fetchServerSentEvents('/api/chat')
 
 const stateLabel: Record<string, string> = {
   'awaiting-input': 'preparing',
@@ -61,10 +60,20 @@ function ToolCallRow({
   )
 }
 
-export function ChatSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ChatSidebar({ documentId, open, onClose }: { documentId: string; open: boolean; onClose: () => void }) {
+  const chatOptions = useMemo(
+    () => createChatClientOptions({
+      connection: chatConnection,
+      tools: webmcpClientTools,
+      persistence: chatPersistence,
+      threadId: documentId,
+    }),
+    [documentId],
+  )
   const { messages, sendMessage, isLoading, error, stop, clear } = useChat(chatOptions)
   const [draft, setDraft] = useState('')
   const [overWebmcp, setOverWebmcp] = useState(true)
+  const [clearOpen, setClearOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -103,7 +112,7 @@ export function ChatSidebar({ open, onClose }: { open: boolean; onClose: () => v
             <button
               type="button"
               className="rounded-md px-2 py-1 text-[11px] text-muted transition-colors hover:bg-sunken hover:text-ink"
-              onClick={() => clear()}
+              onClick={() => setClearOpen(true)}
             >
               Clear
             </button>
@@ -229,6 +238,44 @@ export function ChatSidebar({ open, onClose }: { open: boolean; onClose: () => v
           </div>
         </div>
       </div>
+
+      <Dialog.Root open={clearOpen} onOpenChange={setClearOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className={dialogOverlayClass} />
+          <Dialog.Content
+            className={cn(dialogSurfaceClass, 'w-[min(430px,calc(100vw-32px))] p-[25px]')}
+            aria-describedby="clear-chat-description"
+          >
+            <div className="flex items-start gap-[13px]">
+              <span className="mt-px grid size-10 shrink-0 place-items-center rounded-xl border border-[oklch(.86_.05_28)] bg-[oklch(.975_.014_28)] text-danger" aria-hidden="true">
+                <TrashIcon size={18} />
+              </span>
+              <div>
+                <Dialog.Title className="m-0 font-display text-[22px] font-[620] tracking-[-.03em]">
+                  Delete this chat?
+                </Dialog.Title>
+                <Dialog.Description className="mt-[7px] mb-0 text-[12.5px] leading-normal text-muted" id="clear-chat-description">
+                  This conversation with Mimir will be permanently removed from this browser.
+                </Dialog.Description>
+              </div>
+            </div>
+            <div className="mt-6 flex items-center justify-end gap-2 max-[600px]:[&>button]:min-w-0 max-[600px]:[&>button]:flex-1">
+              <Dialog.Close asChild>
+                <Button tone="paper">Keep chat</Button>
+              </Dialog.Close>
+              <Button
+                tone="danger"
+                onClick={() => {
+                  clear()
+                  setClearOpen(false)
+                }}
+              >
+                <TrashIcon size={15} /> Delete chat
+              </Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </aside>
   )
 }
