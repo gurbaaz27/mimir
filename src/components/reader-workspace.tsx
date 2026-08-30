@@ -92,6 +92,7 @@ export function ReaderWorkspace() {
     if (!activeDocument) return
     let cancelled = false
     setPdf(null)
+    setLoadError(null)
     void loadPdf(activeDocument.blob)
       .then((document) => {
         if (cancelled) return void document.cleanup()
