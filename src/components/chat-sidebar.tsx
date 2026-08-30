@@ -232,7 +232,7 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
       aria-hidden={!open}
       inert={!open ? true : undefined}
     >
-      <div className="flex h-full min-h-0 w-[352px] max-w-full min-w-0 flex-1 flex-col">
+      <div className="flex h-full min-h-0 w-full max-w-[352px] min-w-0 flex-1 flex-col max-[820px]:max-w-none">
         <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-line px-3">
           <span
             className="grid size-[27px] shrink-0 place-items-center rounded-[9px] border border-[oklch(.9_.02_85)] bg-[linear-gradient(180deg,var(--color-paper),var(--color-cream))] text-bark shadow-lift"
