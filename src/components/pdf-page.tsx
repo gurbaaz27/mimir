@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { TextLayer, type PDFDocumentProxy, type RenderTask } from 'pdfjs-dist'
 import 'pdfjs-dist/web/pdf_viewer.css'
 import { createAnnotationBase, type Annotation, type MarkupType } from '#/lib/annotations'
-import { mergeTextQuads } from '#/lib/annotation-geometry'
+import { mergeTextQuads, textLayerAttribute } from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
 import { AnnotationOverlay } from './annotation-overlay'
 import { NoteLayer } from './note-layer'
@@ -129,7 +129,7 @@ export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations, onPageWi
       onPointerUp={() => void createTextMarkup()}
     >
       <canvas ref={canvasRef} aria-label={`Page ${pageNumber}`} />
-      <div ref={textRef} className="absolute inset-0 z-2 origin-top-left overflow-hidden leading-none [text-size-adjust:none] [&_span]:absolute [&_span]:origin-top-left [&_span]:cursor-text [&_span]:whitespace-pre [&_span]:text-transparent [&_::selection]:bg-[oklch(.82_.05_85/.7)]" />
+      <div ref={textRef} {...{ [textLayerAttribute]: '' }} className="absolute inset-0 z-2 origin-top-left overflow-hidden leading-none [text-size-adjust:none] [&_span]:absolute [&_span]:origin-top-left [&_span]:cursor-text [&_span]:whitespace-pre [&_span]:text-transparent [&_::selection]:bg-[oklch(.82_.05_85/.7)]" />
       <AnnotationOverlay
         pageNumber={pageNumber}
         annotations={annotations}

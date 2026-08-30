@@ -2,9 +2,10 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createAnnotationBase, type Annotation } from './annotations'
+import { textLayerAttribute } from './annotation-geometry'
 import { db, type DocumentRecord } from './db.client'
 import { editorStore } from './editor-store.client'
-import { documentTools } from './webmcp.client'
+import { documentTools, isToolFailure } from './webmcp.client'
 
 const documentId = 'document-1'
 const style = { color: '#159b98', opacity: 0.85, strokeWidth: 2 }
@@ -49,15 +50,38 @@ function ink(author: Annotation['createdBy']): Annotation {
  * A stand-in for a rendered PDF page. jsdom has no layout, so the geometry the
  * anchoring code reads is stubbed to fixed, plausible rectangles.
  */
-function mountPage(pageNumber: number, chunks: Array<string>) {
+/**
+ * A span in a rendered text layer, and whether it touches the one before it.
+ * pdf.js splits a token across spans wherever kerning demands it, and those
+ * fragments abut; separate words are set a space apart. Quote anchoring reads
+ * that geometry, so the fixture has to carry it.
+ */
+type Chunk = string | { text: string; abutsPrevious: true }
+
+const CHARACTER_WIDTH = 7
+const SPACE_WIDTH = 7
+
+function mountPage(pageNumber: number, chunks: Array<Chunk>) {
   const page = document.createElement('div')
   page.setAttribute('data-page-number', String(pageNumber))
   const layer = document.createElement('div')
-  layer.className = 'textLayer'
-  for (const chunk of chunks) {
+  // Marked the way the renderer marks it. Hard-coding the old `.textLayer`
+  // class here is what let the Tailwind migration break quote anchoring in the
+  // real app while this suite stayed green.
+  layer.setAttribute(textLayerAttribute, '')
+  let x = 0
+  for (const [index, chunk] of chunks.entries()) {
+    const text = typeof chunk === 'string' ? chunk : chunk.text
+    const abutsPrevious = typeof chunk === 'string' ? false : chunk.abutsPrevious
+    if (index > 0 && !abutsPrevious) x += SPACE_WIDTH
     const span = document.createElement('span')
-    span.textContent = chunk
+    span.textContent = text
+    // Read back by the layout stub below, standing in for what pdf.js would
+    // have positioned.
+    span.dataset.left = String(x)
+    span.dataset.width = String(text.length * CHARACTER_WIDTH)
     layer.append(span)
+    x += text.length * CHARACTER_WIDTH
   }
   page.append(layer)
   document.body.append(page)
@@ -65,8 +89,16 @@ function mountPage(pageNumber: number, chunks: Array<string>) {
 }
 
 function stubLayout() {
-  Element.prototype.getBoundingClientRect = () =>
-    ({ left: 0, top: 0, right: 600, bottom: 800, width: 600, height: 800, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+  // jsdom has no layout. A span reports the box mountPage gave it; everything
+  // else reports the page.
+  Element.prototype.getBoundingClientRect = function (this: Element) {
+    const left = Number((this as HTMLElement).dataset?.left)
+    if (Number.isFinite(left)) {
+      const width = Number((this as HTMLElement).dataset.width)
+      return { left, top: 100, right: left + width, bottom: 112, width, height: 12, x: left, y: 100, toJSON: () => ({}) } as DOMRect
+    }
+    return { left: 0, top: 0, right: 600, bottom: 800, width: 600, height: 800, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+  }
   Range.prototype.getClientRects = () =>
     [{ left: 50, top: 100, right: 150, bottom: 112, width: 100, height: 12, x: 50, y: 100, toJSON: () => ({}) }] as unknown as DOMRectList
 }
@@ -79,6 +111,17 @@ function toolNamed(name: string) {
 
 async function run(name: string, input: Record<string, unknown> = {}) {
   return (await toolNamed(name).execute(input, noop)) as Record<string, unknown>
+}
+
+/**
+ * Failures come back as data rather than as a rejection, because WebMCP drops a
+ * thrown error's message on the way to the agent. This reads the sentence back
+ * out, and fails loudly if the call unexpectedly succeeded.
+ */
+async function failureOf(name: string, input: Record<string, unknown> = {}) {
+  const result = await toolNamed(name).execute(input, noop)
+  if (!isToolFailure(result)) throw new Error(`Expected ${name} to fail, got ${JSON.stringify(result)}`)
+  return result.error
 }
 
 describe('document tools over the shared command path', () => {
@@ -164,7 +207,7 @@ describe('document tools over the shared command path', () => {
   it('refuses a delete of only human marks rather than reporting an empty success', async () => {
     const theirs = note('human')
     await editorStore.getState().createAnnotations([theirs], 'Add mark')
-    await expect(run('delete_annotations', { ids: [theirs.id] })).rejects.toThrow(/made by the reader/)
+    expect(await failureOf('delete_annotations', { ids: [theirs.id] })).toMatch(/made by the reader/)
   })
 
   it('lets an agent revert its own change', async () => {
@@ -193,9 +236,9 @@ describe('document tools over the shared command path', () => {
   it('separates a page still being indexed from a page that is a scan', async () => {
     await db.textPages.put({ documentId, pageNumber: 1, text: '' })
 
-    await expect(run('read_document_text', { pageNumber: 1 })).rejects.toThrow(/most likely a scan/)
-    await expect(run('read_document_text', { pageNumber: 3 })).rejects.toThrow(/not been indexed yet/)
-    await expect(run('read_document_text', { pageNumber: 9 })).rejects.toThrow(/outside this PDF/)
+    expect(await failureOf('read_document_text', { pageNumber: 1 })).toMatch(/most likely a scan/)
+    expect(await failureOf('read_document_text', { pageNumber: 3 })).toMatch(/not been indexed yet/)
+    expect(await failureOf('read_document_text', { pageNumber: 9 })).toMatch(/outside this PDF/)
   })
 
   it('reports text availability so an agent knows quote anchoring is hopeless', async () => {
@@ -235,7 +278,7 @@ describe('document tools over the shared command path', () => {
   })
 
   it('explains a bad id instead of failing anonymously', async () => {
-    await expect(run('navigate_document', { annotationId: 'nope' })).rejects.toThrow(/list_annotations for current ids/)
+    expect(await failureOf('navigate_document', { annotationId: 'nope' })).toMatch(/list_annotations for current ids/)
   })
 })
 
@@ -284,6 +327,119 @@ describe('anchoring marks to what the page actually says', () => {
     })
   })
 
+  it('pins a note inside the page when its quote ends at the right margin', async () => {
+    // The pin is derived just past the quote, so a quote in a table's last
+    // column pushed x above 1 and the annotation schema rejected it — failing
+    // the whole batch over geometry the caller never supplied.
+    Range.prototype.getClientRects = () =>
+      [{ left: 560, top: 100, right: 620, bottom: 112, width: 60, height: 12, x: 560, y: 100, toJSON: () => ({}) }] as unknown as DOMRectList
+    mountPage(1, ['The methodology is sound.'])
+
+    const result = await run('create_annotations', {
+      annotations: [{ kind: 'note', pageNumber: 1, body: 'Is it?', target: { quote: 'methodology is sound' } }],
+    })
+
+    expect(result.failed).toEqual([])
+    const stored = editorStore.getState().annotations[0]
+    if (stored?.kind === 'note') expect(stored.point.x).toBe(1)
+  })
+
+  it('reports an unrendered text layer as unrendered, not as a scan', async () => {
+    // The page is present and its text is indexed, but the layer has not
+    // rendered. Saying "most likely a scan" here is a false diagnosis, and an
+    // agent acts on it: it stops anchoring and tells the reader the PDF is an
+    // image. Say what is actually known.
+    await db.textPages.put({ documentId, pageNumber: 1, text: 'The methodology is sound.' })
+    const bare = document.createElement('div')
+    bare.setAttribute('data-page-number', '1')
+    document.body.append(bare)
+
+    const message = await failureOf('create_annotations', {
+      annotations: [{ kind: 'note', pageNumber: 1, body: 'x', target: { quote: 'methodology' } }],
+    })
+
+    expect(message).toMatch(/text layer has not rendered/)
+    expect(message).toMatch(/does have extractable text/)
+    expect(message).not.toMatch(/most likely a scan/)
+  })
+
+  it('does not bridge a space the page really has when falling back', async () => {
+    // Reached only when the on-screen reading finds nothing, which is where the
+    // split-token fallback runs. It must not join across a space inside a span.
+    mountPage(1, ['Reply on NON DUTY PERIOD regular'])
+
+    const message = await failureOf('create_annotations', {
+      annotations: [{ kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'NONDUTY' } }],
+    })
+
+    expect(message).toMatch(/was not found/)
+    expect(editorStore.getState().annotations).toEqual([])
+  })
+
+  it('keeps the word boundary between two spaced words in separate spans', async () => {
+    // The pair the fallback must leave alone: separate spans, but set a space
+    // apart on the page. Joining them would accept a quote that omits the
+    // visible space and anchor to a passage that does not read that way —
+    // reported to the caller as a success.
+    mountPage(1, ['NON', 'DUTY'])
+
+    const message = await failureOf('create_annotations', {
+      annotations: [{ kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'NONDUTY' } }],
+    })
+
+    expect(message).toMatch(/was not found/)
+    expect(editorStore.getState().annotations).toEqual([])
+  })
+
+  it('joins two spans that pdf.js set touching', async () => {
+    mountPage(1, ['NON', { text: 'DUTY', abutsPrevious: true }])
+
+    const result = await run('create_annotations', {
+      annotations: [{ kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'NONDUTY' } }],
+    })
+
+    expect(result.failed).toEqual([])
+    expect(result.created).toEqual([expect.objectContaining({ kind: 'markup', pageNumber: 1 })])
+  })
+
+  it('still matches a real gap that the page genuinely contains', async () => {
+    mountPage(1, ['NEGLIGENCE IN DUTY reported'])
+
+    const result = await run('create_annotations', {
+      annotations: [{ kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'in duty' } }],
+    })
+
+    expect(result.failed).toEqual([])
+    expect(result.created).toEqual([expect.objectContaining({ kind: 'markup', pageNumber: 1 })])
+  })
+
+  it('anchors a quote that pdf.js split across text-layer spans', async () => {
+    // The regression this guards: a text layer is absolutely positioned spans,
+    // and kerning routinely breaks a token across two of them. The separator
+    // between nodes then lands mid-token, so "D-9519/T1" reads as
+    // "D-9519 /T1" and never matches — while search_document, reading the
+    // extracted page text rather than the DOM, insists it is right there.
+    mountPage(1, ['Decided', '5', 'D-9519', { text: '/T1', abutsPrevious: true }, 'CS', '193', 'NEGLIGENCE IN DUTY'])
+
+    const created = await run('create_annotations', {
+      annotations: [
+        { kind: 'note', pageNumber: 1, body: 'less go', target: { quote: 'D-9519/T1' } },
+      ],
+    })
+
+    expect(created.failed).toEqual([])
+    expect(created.created).toEqual([expect.objectContaining({ kind: 'note', pageNumber: 1 })])
+  })
+
+  it('still reports a quote that is genuinely absent from the page', async () => {
+    mountPage(1, ['Case Status Decided'])
+    expect(
+      await failureOf('create_annotations', {
+        annotations: [{ kind: 'note', pageNumber: 1, body: 'x', target: { quote: 'nowhere on this page' } }],
+      }),
+    ).toMatch(/was not found in page 1/)
+  })
+
   it('highlights a quote by finding it in the rendered text layer', async () => {
     mountPage(1, ['Before the claim.', 'The methodology', 'is sound.', 'After the claim.'])
 
@@ -322,13 +478,13 @@ describe('anchoring marks to what the page actually says', () => {
     mountPage(1, ['An unrelated opening paragraph.'])
     await db.textPages.put({ documentId, pageNumber: 3, text: 'The methodology is sound.' })
 
-    await expect(
-      run('create_annotations', {
+    expect(
+      await failureOf('create_annotations', {
         annotations: [
           { kind: 'markup', pageNumber: 1, markup: 'highlight', target: { quote: 'methodology is sound' } },
         ],
       }),
-    ).rejects.toThrow(/appears on page 3/)
+    ).toMatch(/appears on page 3/)
     expect(editorStore.getState().annotations).toEqual([])
   })
 
@@ -434,9 +590,9 @@ describe('batches that name the same mark twice', () => {
     const comment = note('webmcp')
     await editorStore.getState().createAnnotations([comment], 'Add note')
 
-    await expect(
-      run('update_annotations', { updates: [{ id: comment.id, style: { color: '' } }] }),
-    ).rejects.toThrow(/style\.color/)
+    expect(
+      await failureOf('update_annotations', { updates: [{ id: comment.id, style: { color: '' } }] }),
+    ).toMatch(/style\.color/)
     expect(editorStore.getState().history).toHaveLength(1)
   })
 
@@ -448,14 +604,14 @@ describe('batches that name the same mark twice', () => {
 
     // Validation is all-or-nothing on purpose: an agent that has to work out
     // which half of a malformed batch landed is worse off than one that resends it.
-    await expect(
-      run('update_annotations', {
+    expect(
+      await failureOf('update_annotations', {
         updates: [
           { id: first.id, body: 'Would have been fine.' },
           { id: second.id, style: { color: '' } },
         ],
       }),
-    ).rejects.toThrow(/updates\[1\]\.style\.color.*Nothing was applied/s)
+    ).toMatch(/updates\[1\]\.style\.color.*Nothing was applied/s)
 
     expect(editorStore.getState().history).toEqual([])
     const stored = editorStore.getState().annotations.find((item) => item.id === first.id)
@@ -523,19 +679,19 @@ describe('shape geometry the renderer can actually draw', () => {
   })
 
   it('rejects a line carrying bounds and a rectangle carrying endpoints', async () => {
-    await expect(
-      run('create_annotations', {
+    expect(
+      await failureOf('create_annotations', {
         annotations: [{ kind: 'shape', pageNumber: 1, shape: 'line', bounds: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 } }],
       }),
-    ).rejects.toThrow(/start/)
+    ).toMatch(/start/)
 
-    await expect(
-      run('create_annotations', {
+    expect(
+      await failureOf('create_annotations', {
         annotations: [
           { kind: 'shape', pageNumber: 1, shape: 'rectangle', start: { x: 0.1, y: 0.1 }, end: { x: 0.3, y: 0.3 } },
         ],
       }),
-    ).rejects.toThrow(/bounds/)
+    ).toMatch(/bounds/)
 
     expect(editorStore.getState().annotations).toEqual([])
   })

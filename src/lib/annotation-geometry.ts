@@ -3,6 +3,20 @@ import type { NormalizedRect, Point } from './annotations'
 export type ConstrainedShape = 'rectangle' | 'ellipse' | 'arrow'
 export type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 
+/**
+ * How the rendered PDF text layer is found in the DOM.
+ *
+ * Quote anchoring walks this element, so it is a contract between the renderer
+ * and every tool that anchors to page text — not a styling detail. It used to
+ * be the class `.textLayer`, which the Tailwind v4 migration replaced with
+ * utility classes; nothing pointed at the tools that queried it, and quote
+ * anchoring reported every page as an unreadable scan until it was found. A
+ * data attribute keeps the hook out of the way of styling, and exporting it
+ * means the renderer and the query cannot drift apart again.
+ */
+export const textLayerAttribute = 'data-text-layer'
+export const textLayerSelector = `[${textLayerAttribute}]`
+
 export const resizeHandles: ReadonlyArray<ResizeHandle> = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 export const defaultNoteSizePx = { width: 178, height: 118 } as const
 
