@@ -838,6 +838,36 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
 export type WebMcpStatus = 'available' | 'unavailable' | 'registering'
 
 /**
+ * The tool objects this document has built, keyed by name. WebMCP is the
+ * canonical way to reach them — but the in-page chat sidebar runs inside the
+ * very document that owns these closures, so when the browser has no WebMCP it
+ * can still call them directly instead of going dark. Kept in sync with
+ * registration, including the unregister that an aborted signal implies.
+ */
+const localTools = new Map<string, WebMCP.ModelContextTool>()
+
+/** Look up one of this document's tools by name for direct, in-page execution. */
+export function getLocalTool(name: string): WebMCP.ModelContextTool | null {
+  return localTools.get(name) ?? null
+}
+
+/** Every tool this document currently exposes, for agents that need a catalogue. */
+export function listLocalTools(): Array<WebMCP.ModelContextTool> {
+  return [...localTools.values()]
+}
+
+function trackLocally(definitions: Array<WebMCP.ModelContextTool>, signal: AbortSignal) {
+  for (const definition of definitions) localTools.set(definition.name, definition)
+  signal.addEventListener('abort', () => {
+    for (const definition of definitions) {
+      // Only drop the entry we put there: a re-register may already have
+      // replaced it with a fresher closure over the new document.
+      if (localTools.get(definition.name) === definition) localTools.delete(definition.name)
+    }
+  })
+}
+
+/**
  * Read the tools that are actually registered and exposed to this document.
  * This is intentionally sourced from WebMCP rather than from our local tool
  * definitions: registration is asynchronous, and the browser may expose tools
@@ -887,16 +917,18 @@ export function useWebMcp(documentId: string | null, openDocumentPath?: OpenDocu
   navigatorRef.current = openDocumentPath
 
   useEffect(() => {
+    const controller = new AbortController()
+    const definitions = libraryTools(navigatorRef)
+    // Track first and unconditionally: the tools exist for this document even in
+    // a browser that cannot publish them, and the chat sidebar runs on them.
+    trackLocally(definitions, controller.signal)
     const modelContext = document.modelContext
     if (!modelContext) {
       setStatus('unavailable')
-      return
+      return () => controller.abort()
     }
-    const controller = new AbortController()
     Promise.all(
-      libraryTools(navigatorRef).map((definition) =>
-        modelContext.registerTool(definition, { signal: controller.signal }),
-      ),
+      definitions.map((definition) => modelContext.registerTool(definition, { signal: controller.signal })),
     )
       .then(() => setStatus('available'))
       .catch(() => setStatus('unavailable'))
@@ -904,13 +936,14 @@ export function useWebMcp(documentId: string | null, openDocumentPath?: OpenDocu
   }, [])
 
   useEffect(() => {
-    const modelContext = document.modelContext
-    if (!modelContext || !documentId) return
+    if (!documentId) return
     const controller = new AbortController()
+    const definitions = documentTools(documentId)
+    trackLocally(definitions, controller.signal)
+    const modelContext = document.modelContext
+    if (!modelContext) return () => controller.abort()
     Promise.all(
-      documentTools(documentId).map((definition) =>
-        modelContext.registerTool(definition, { signal: controller.signal }),
-      ),
+      definitions.map((definition) => modelContext.registerTool(definition, { signal: controller.signal })),
     ).catch(() => setStatus('unavailable'))
     return () => controller.abort()
   }, [documentId])

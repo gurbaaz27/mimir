@@ -9,6 +9,7 @@ import { editorStore, useEditorStore, type EditorTool } from '#/lib/editor-store
 import { loadPdf } from '#/lib/pdf.client'
 import {
   ArrowLeftIcon,
+  BotIcon,
   ChevronDownIcon,
   DownloadIcon,
   MinusIcon,
@@ -21,6 +22,7 @@ import {
   UndoIcon,
 } from '#/components/icons'
 import { AnnotationToolbar } from './annotation-toolbar'
+import { ChatSidebar } from './chat-sidebar'
 import { DocumentSidebar } from './document-sidebar'
 import { PdfViewer } from './pdf-viewer'
 import { SearchPanel } from './search-panel'
@@ -68,6 +70,7 @@ export function ReaderWorkspace() {
   const loadOutline = useEditorStore((state) => state.loadOutline)
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'pdf' | 'json'>('pdf')
   const [exportProgress, setExportProgress] = useState<number | null>(null)
@@ -284,6 +287,7 @@ export function ReaderWorkspace() {
           </div>
           <div className="flex min-w-0 items-center justify-end gap-0.5">
             <AgentStatus documentId={activeDocument.id} variant="reader" />
+            <IconButton label="Ask Mimir" icon={BotIcon} active={chatOpen} onClick={() => setChatOpen(!chatOpen)} />
             <IconButton data-search-trigger label="Search" shortcut="⌘F" icon={SearchIcon} active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} />
             <IconButton className="max-[600px]:hidden" label="Rotate clockwise" icon={RotateCwIcon} onClick={() => setRotation(rotation + 90)} />
             <IconButton className="max-[600px]:hidden" label="Undo" shortcut="⌘Z" icon={UndoIcon} disabled={!history.length} onClick={() => void undo()} />
@@ -316,6 +320,13 @@ export function ReaderWorkspace() {
         <AnnotationToolbar />
         {searchOpen && <SearchPanel />}
 
+        {/* The chat column is its own grid so the reader's own sidebar/viewer
+            split keeps working untouched, and so the conversation survives a
+            collapse: the panel stays mounted at zero width. */}
+        <div className={cn(
+          'grid min-h-0 grid-cols-[minmax(0,1fr)_0] overflow-hidden transition-[grid-template-columns] duration-280 ease-spring',
+          chatOpen && 'grid-cols-[minmax(0,1fr)_352px] max-[1100px]:grid-cols-[minmax(0,1fr)_312px] max-[820px]:grid-cols-[0_minmax(0,1fr)]',
+        )}>
         <div className={cn(
           'relative grid min-h-0 grid-cols-[0_minmax(0,1fr)] overflow-hidden transition-[grid-template-columns] duration-280 ease-spring max-[820px]:grid-cols-[minmax(0,1fr)]',
           sidebarOpen && 'grid-cols-[228px_minmax(0,1fr)] max-[1100px]:grid-cols-[196px_minmax(0,1fr)] max-[820px]:grid-cols-[minmax(0,1fr)]',
@@ -334,6 +345,8 @@ export function ReaderWorkspace() {
             )}
             <SelectionBar />
           </section>
+        </div>
+          <ChatSidebar open={chatOpen} onClose={() => setChatOpen(false)} />
         </div>
 
         {toast && (
