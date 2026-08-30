@@ -2,7 +2,7 @@ import { ClientOnly, createFileRoute, Link } from '@tanstack/react-router'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { getDocumentPathSegment } from '#/lib/document-route'
 import { editorStore, useEditorStore } from '#/lib/editor-store.client'
-import { MimirMark } from '#/components/ui'
+import { AppBoot } from '#/components/ui'
 
 const ReaderWorkspace = lazy(() =>
   import('#/components/reader-workspace').then((module) => ({ default: module.ReaderWorkspace })),
@@ -15,7 +15,7 @@ export const Route = createFileRoute('/$pdfName')({
 
 function DocumentRoute() {
   return (
-    <ClientOnly fallback={<div className="app-boot">Preparing your local workspace…</div>}>
+    <ClientOnly fallback={<AppBoot>Preparing your local workspace…</AppBoot>}>
       <DocumentPage />
     </ClientOnly>
   )
@@ -74,22 +74,21 @@ function DocumentPage() {
   const isCurrentDocument = activeDocument && getDocumentPathSegment(activeDocument) === pdfName
   if (notFound) {
     return (
-      <main className="app-boot not-found-page">
-        <MimirMark />
-        <div className="not-found-copy">
+      <AppBoot branded>
+        <div className="grid gap-1.5">
           <strong>That document is not in your local library.</strong>
           <Link to="/">Back to library</Link>
         </div>
-      </main>
+      </AppBoot>
     )
   }
-  if (error) return <div className="app-boot">{error}</div>
+  if (error) return <AppBoot>{error}</AppBoot>
   if (loading || !isCurrentDocument) {
-    return <div className="app-boot">Opening your reading workspace…</div>
+    return <AppBoot>Opening your reading workspace…</AppBoot>
   }
 
   return (
-    <Suspense fallback={<div className="app-boot">Opening your reading workspace…</div>}>
+    <Suspense fallback={<AppBoot>Opening your reading workspace…</AppBoot>}>
       <ReaderWorkspace />
     </Suspense>
   )

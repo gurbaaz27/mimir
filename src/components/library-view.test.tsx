@@ -43,7 +43,7 @@ describe('local document library', () => {
     render(<LibraryView />)
 
     expect(await screen.findByRole('button', { name: /drop another pdf here/i })).toBeTruthy()
-    expect(document.querySelectorAll('.pitch-line')[1]?.textContent).toMatch(/ask your agent to do that for you/i)
+    expect(document.querySelectorAll('[data-slot="pitch-line"]')[1]?.textContent).toMatch(/ask your agent to do that for you/i)
     expect(screen.getByText(/pdfs never leave the browser/i)).toBeTruthy()
 
     const scrollIntoView = vi.fn()

@@ -3,6 +3,7 @@ import { Check, ChevronDown } from 'lucide-react'
 import type { Annotation, NormalizedRect, Point } from '#/lib/annotations'
 import { defaultNoteSizePx, resizeRectFromHandle, type ResizeHandle } from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
+import { cn } from '#/lib/utils'
 import { ResizeHandles } from './annotation-resize-handles'
 
 type NoteAnnotation = Extract<Annotation, { kind: 'note' }>
@@ -27,7 +28,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function pointInNoteLayer(event: { clientX: number; clientY: number; currentTarget: HTMLElement }): Point | null {
-  const layer = event.currentTarget.closest('.note-layer')
+  const layer = event.currentTarget.closest('[data-note-layer]')
   if (!(layer instanceof HTMLElement)) return null
   const rect = layer.getBoundingClientRect()
   if (!rect.width || !rect.height) return null
@@ -205,7 +206,11 @@ function StickyNote({
     return (
       <button
         type="button"
-        className={`sticky-pin ${selected ? 'is-selected' : ''} ${annotation.resolved ? 'is-resolved' : ''}`}
+        className={cn(
+          'absolute grid origin-top-left cursor-grab content-center justify-start gap-[3px] rounded-[2px_2px_5px_2px] border-0 bg-[color-mix(in_oklab,var(--note-color)_62%,white)] px-[3px] py-1 shadow-[inset_0_0_0_1px_oklch(.3_.05_75/.18),0_1px_1px_oklch(.3_.05_75/.2),0_4px_8px_oklch(.3_.05_75/.18)] hover:brightness-104 [&_span]:block [&_span]:h-px [&_span]:w-3.5 [&_span]:bg-[oklch(.28_.03_75/.55)] [&_span:last-child]:w-[9px]',
+          selected && 'shadow-[inset_0_0_0_1.5px_var(--color-ink),0_3px_7px_oklch(.3_.05_75/.22)]',
+          annotation.resolved && 'opacity-66',
+        )}
         style={{
           left,
           top,
@@ -237,7 +242,7 @@ function StickyNote({
 
   return (
     <div
-      className={`sticky-note ${selected ? 'is-selected' : ''} ${annotation.resolved ? 'is-resolved' : ''}`}
+      className="absolute origin-top-left drop-shadow-[0_1px_1px_oklch(.3_.05_75/.22)] transition-[filter] duration-150 hover:drop-shadow-[0_10px_20px_oklch(.3_.05_75/.24)]"
       style={{
         left,
         top,
@@ -258,19 +263,23 @@ function StickyNote({
           onPointerUp={handleResizeEnd}
         />
       )}
-      <div className="sticky-note-paper">
+      <div className={cn(
+        `relative flex size-full flex-col overflow-hidden rounded-sm bg-[color-mix(in_oklab,var(--note-color)_30%,white)] [clip-path:polygon(0_0,100%_0,100%_calc(100%-14px),calc(100%-14px)_100%,0_100%)] after:absolute after:right-0 after:bottom-0 after:border-[7px] after:border-transparent after:border-t-[color-mix(in_oklab,var(--note-color)_58%,white)] after:border-l-[color-mix(in_oklab,var(--note-color)_58%,white)] after:content-['']`,
+        selected && 'shadow-[inset_0_0_0_1.5px_var(--color-ink)]',
+        annotation.resolved && 'opacity-66',
+      )}>
         <div
-          className="sticky-note-head"
+          className="flex h-[17px] shrink-0 touch-none cursor-grab items-center gap-1 bg-[color-mix(in_oklab,var(--note-color)_62%,white)] pr-[3px] pl-1.5 active:cursor-grabbing"
           onPointerDown={handleDragStart}
           onPointerMove={handleDragMove}
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}
         >
-          <span className="sticky-note-grip" aria-hidden="true" />
-          {annotation.resolved && <Check className="sticky-note-resolved" size={11} aria-label="Resolved" />}
+          <span className="mr-auto h-[5px] w-[18px] shrink-0 border-y border-[oklch(.3_.03_75/.3)]" aria-hidden="true" />
+          {annotation.resolved && <Check className="shrink-0 text-[oklch(.32_.03_75/.8)]" size={11} aria-label="Resolved" />}
           <button
             type="button"
-            className="sticky-note-collapse"
+            className="grid size-3.5 shrink-0 place-items-center rounded-[3px] border-0 bg-transparent p-0 text-[oklch(.3_.03_75/.72)] hover:bg-[oklch(1_0_0/.5)] hover:text-[oklch(.24_.03_75)]"
             aria-label="Collapse note"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setCollapsed(true)}
@@ -280,7 +289,7 @@ function StickyNote({
         </div>
         <textarea
           ref={bodyRef}
-          className="sticky-note-body"
+          className="min-h-0 w-full flex-1 resize-none border-0 bg-transparent px-2 pt-1.5 pb-3 font-sans text-[11px] leading-[1.42] font-medium text-[oklch(.24_.025_75)] outline-none [overflow-wrap:anywhere] placeholder:text-[oklch(.35_.02_75/.5)]"
           value={body}
           placeholder="Add your thought…"
           spellCheck={false}
@@ -476,7 +485,7 @@ function TextBox({
 
   return (
     <div
-      className={`text-annotation-box ${selected ? 'is-selected' : ''} ${annotation.autoHeight === false || resizeBounds ? 'is-fixed-height' : ''}`}
+      className="group/text-box absolute"
       style={{
         left: bounds.x * pageWidth,
         top: bounds.y * pageHeight,
@@ -497,7 +506,11 @@ function TextBox({
       )}
       <textarea
         ref={inputRef}
-        className="text-annotation-input"
+        className={cn(
+          'h-full min-h-0 w-full resize-none overflow-hidden rounded border border-dashed border-transparent bg-transparent px-[3px] py-0.5 font-sans leading-[1.28] outline-none [overflow-wrap:anywhere] hover:border-[color-mix(in_oklab,var(--note-color)_45%,transparent)]',
+          selected && 'border-solid border-ink bg-[oklch(1_0_0/.6)]',
+          (annotation.autoHeight === false || resizeBounds) && 'overflow-auto',
+        )}
         value={body}
         placeholder="Type on the page…"
         spellCheck={false}
@@ -513,7 +526,11 @@ function TextBox({
       />
       <button
         type="button"
-        className="text-annotation-drag-handle"
+        className={cn(
+          'absolute top-0.5 right-0.5 z-1 grid h-[15px] w-[18px] touch-none cursor-grab place-items-center rounded-[3px] border-0 bg-[oklch(1_0_0/.76)] p-0 text-ink-soft opacity-0 transition-[opacity,background] duration-120 group-hover/text-box:opacity-100 hover:bg-paper active:cursor-grabbing',
+          selected && 'opacity-100',
+          `[&_span]:block [&_span]:h-px [&_span]:w-[9px] [&_span]:bg-current [&_span]:before:absolute [&_span]:before:block [&_span]:before:h-px [&_span]:before:w-[9px] [&_span]:before:-translate-y-[3px] [&_span]:before:bg-current [&_span]:before:content-[''] [&_span]:after:absolute [&_span]:after:block [&_span]:after:h-px [&_span]:after:w-[9px] [&_span]:after:translate-y-[3px] [&_span]:after:bg-current [&_span]:after:content-['']`,
+        )}
         aria-label="Move text box"
         title="Move text box"
         onPointerDown={handleDragStart}
@@ -547,7 +564,7 @@ export function NoteLayer({ pageNumber, annotations, pageWidth, pageHeight, zoom
 
   const interactive = tool === 'select' || tool === 'note' || tool === 'text'
   return (
-    <div className={`note-layer ${interactive ? 'is-interactive' : ''}`}>
+    <div data-note-layer className={cn('pointer-events-none absolute inset-0 z-3', interactive && '[&>*]:pointer-events-auto')}>
       {pageAnnotations.map((annotation) =>
         annotation.kind === 'note' ? (
           <StickyNote

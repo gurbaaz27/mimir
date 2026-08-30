@@ -14,9 +14,9 @@ function mockToolbarLayout() {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 768 })
   HTMLElement.prototype.getBoundingClientRect = function () {
-    if (!this.classList.contains('tool-tray')) return new DOMRect()
+    if (this.dataset.slot !== 'annotation-toolbar') return new DOMRect()
 
-    const vertical = this.classList.contains('is-vertical')
+    const vertical = this.dataset.orientation === 'vertical'
     const width = vertical ? 80 : 500
     const height = vertical ? 500 : 66
     const offsetX = Number.parseFloat(this.style.getPropertyValue('--toolbar-offset-x')) || 0
@@ -59,7 +59,7 @@ describe('annotation toolbar', () => {
     )
 
     const tray = await screen.findByRole('toolbar')
-    await waitFor(() => expect(tray.classList.contains('is-vertical')).toBe(true))
+    await waitFor(() => expect(tray.dataset.orientation).toBe('vertical'))
     expect(tray.style.getPropertyValue('--toolbar-offset-x')).toBe('472px')
   })
 })
