@@ -684,12 +684,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
     white-space: nowrap;
   }
   .remove-dialog-actions > button { flex: 1 1 0; }
+  .remove-dialog .remove-button {
+    gap: 6px;
+    padding-right: 8px;
+    padding-left: 8px;
+    font-size: 11.5px;
+    letter-spacing: -.015em;
+  }
+  .remove-dialog .remove-button .icon-glyph { display: grid; width: 14px; height: 14px; flex: 0 0 auto; place-items: center; }
+  .remove-dialog .remove-button .icon-glyph svg { display: block; width: 14px; height: 14px; }
   .hero p.hero-pitch { font-size: 15.5px; line-height: 1.85; }
   .document-open { grid-template-columns: 38px minmax(0,1fr) 24px; gap: 12px; padding: 12px 48px 12px 16px; }
   .document-updated { display: none; }
   .reader-actions .icon-button:nth-of-type(2), .reader-actions .icon-button:nth-of-type(3), .reader-actions .icon-button:nth-of-type(4), .reader-actions .icon-button:nth-of-type(5) { display: none; }
-  .reader-actions .export-button { display: inline-grid; width: 34px; min-height: 34px; padding: 0; place-items: center; font-size: 0; line-height: 1; }
-  .reader-actions .export-button .icon-glyph { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; line-height: 0; }
+  .reader-actions .export-button { display: inline-flex; width: 34px; min-height: 34px; align-items: center; justify-content: center; gap: 0; padding: 0; font-size: 0; line-height: 0; vertical-align: middle; }
+  .reader-actions .export-button .icon-glyph { display: flex; width: 16px; height: 16px; margin: 0; align-items: center; justify-content: center; flex: 0 0 16px; line-height: 0; }
+  .reader-actions .export-button .icon-glyph svg { display: block; }
   .document-title strong { max-width: 120px; font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
