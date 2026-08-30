@@ -30,7 +30,7 @@ export function AgentStatus({ documentId, variant = 'reader' }: AgentStatusProps
   )
   const status = useWebMcp(documentId, openDocumentPath)
   const [toolsOpen, setToolsOpen] = useState(false)
-  const [toolListOpen, setToolListOpen] = useState(true)
+  const [toolListOpen, setToolListOpen] = useState(false)
   const [expandedTool, setExpandedTool] = useState<string | null>(null)
   const [schemaOpen, setSchemaOpen] = useState<string | null>(null)
   const tools = useMemo(() => getWebMcpTools(documentId), [documentId])
@@ -43,7 +43,7 @@ export function AgentStatus({ documentId, variant = 'reader' }: AgentStatusProps
       setToolsOpen(false)
       return
     }
-    setToolListOpen(true)
+    setToolListOpen(false)
     setExpandedTool(null)
     setSchemaOpen(null)
   }, [documentId, hasTools])
