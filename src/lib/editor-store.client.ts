@@ -139,6 +139,11 @@ async function persistChange(before: Array<Annotation>, after: Array<Annotation>
 
 let documentOpenRequest = 0
 
+function shouldOpenSidebarByDefault() {
+  if (typeof window === 'undefined') return true
+  return !window.matchMedia?.('(max-width: 820px)').matches
+}
+
 function applyChangeToList(
   current: Array<Annotation>,
   before: Array<Annotation>,
@@ -165,7 +170,7 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   currentPage: 1,
   zoom: 1,
   rotation: 0,
-  sidebarOpen: true,
+  sidebarOpen: shouldOpenSidebarByDefault(),
   searchOpen: false,
   toast: null,
   history: [],

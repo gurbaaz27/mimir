@@ -647,17 +647,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   .selection-bar { bottom: 14px; }
 }
 @media (max-width: 600px) {
+  .library-header { gap: 8px; }
+  .library-header .brand { gap: 7px; }
+  .library-header .brand-mark { width: 32px; height: 32px; border-radius: 8px; }
+  .library-header .brand-name { font-size: 21px; }
   .hero h1 { font-size: 36px; }
   .hero p { font-size: 15px; }
   .hero-claims { margin-top: 38px; }
-  .library-header-actions { gap: 9px; }
-  .library-nav-button { padding: 0 11px; }
-  .agent-status.library { padding-right: 10px; padding-left: 9px; }
+  .library-header-actions { gap: 6px; }
+  .library-nav-button { min-height: 30px; gap: 6px; padding: 0 9px; font-size: 10.5px; }
+  .library-nav-icon { width: 14px; height: 14px; }
+  .agent-status.library { height: 28px; gap: 5px; padding-right: 8px; padding-left: 8px; font-size: 10px; }
   .hero p.hero-pitch { font-size: 15.5px; line-height: 1.85; }
   .document-open { grid-template-columns: 38px minmax(0,1fr) 24px; gap: 12px; padding: 12px 48px 12px 16px; }
   .document-updated { display: none; }
   .reader-actions .icon-button:nth-of-type(2), .reader-actions .icon-button:nth-of-type(3), .reader-actions .icon-button:nth-of-type(4), .reader-actions .icon-button:nth-of-type(5) { display: none; }
-  .reader-actions .export-button { width: 34px; padding: 0; font-size: 0; }
+  .reader-actions .export-button { display: inline-grid; width: 34px; min-height: 34px; padding: 0; place-items: center; font-size: 0; line-height: 1; }
+  .reader-actions .export-button .icon-glyph { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; line-height: 0; }
   .document-title strong { max-width: 120px; font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
