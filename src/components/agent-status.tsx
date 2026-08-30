@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowRightIcon, BookTextIcon, ChevronDownIcon } from '#/components/icons'
 import { cn } from '#/lib/utils'
-import { getWebMcpTools, useWebMcp, type WebMcpStatus } from '#/lib/webmcp.client'
+import { useWebMcp, useWebMcpTools, type WebMcpStatus } from '#/lib/webmcp.client'
 
 type AgentStatusProps = {
   documentId: string | null
@@ -30,13 +30,13 @@ export function AgentStatus({ documentId, variant = 'reader' }: AgentStatusProps
     [navigate],
   )
   const status = useWebMcp(documentId, openDocumentPath)
+  const tools = useWebMcpTools(documentId)
   const [toolsOpen, setToolsOpen] = useState(false)
   const [toolListOpen, setToolListOpen] = useState(false)
   const [expandedTool, setExpandedTool] = useState<string | null>(null)
   const [schemaOpen, setSchemaOpen] = useState<string | null>(null)
-  const tools = useMemo(() => getWebMcpTools(documentId), [documentId])
   const hasTools = status === 'available'
-  const readCount = tools.filter((tool) => tool.readOnly).length
+  const readCount = tools.filter((tool) => tool.annotations?.readOnlyHint === true).length
   const writeCount = tools.length - readCount
 
   useEffect(() => {

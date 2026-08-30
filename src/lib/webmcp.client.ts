@@ -837,22 +837,43 @@ export function documentTools(documentId: string): Array<WebMCP.ModelContextTool
 
 export type WebMcpStatus = 'available' | 'unavailable' | 'registering'
 
-export interface WebMcpToolSummary {
-  name: string
-  title: string
-  description: string
-  inputSchema: unknown
-  readOnly: boolean
-}
+/**
+ * Read the tools that are actually registered and exposed to this document.
+ * This is intentionally sourced from WebMCP rather than from our local tool
+ * definitions: registration is asynchronous, and the browser may expose tools
+ * from other site documents as well.
+ */
+export function useWebMcpTools(refreshKey: string | null): WebMCP.RegisteredTool[] {
+  const [tools, setTools] = useState<WebMCP.RegisteredTool[]>([])
 
-export function getWebMcpTools(documentId: string | null): Array<WebMcpToolSummary> {
-  return [...libraryTools({}), ...(documentId ? documentTools(documentId) : [])].map((definition) => ({
-    name: definition.name,
-    title: definition.title ?? definition.name,
-    description: definition.description,
-    inputSchema: definition.inputSchema,
-    readOnly: definition.annotations?.readOnlyHint === true,
-  }))
+  useEffect(() => {
+    const modelContext = document.modelContext
+    if (!modelContext) {
+      setTools([])
+      return
+    }
+
+    let active = true
+    const refresh = () => {
+      void modelContext
+        .getTools()
+        .then((nextTools) => {
+          if (active) setTools(nextTools)
+        })
+        .catch(() => {
+          // Keep the last successful snapshot if the browser rejects a query.
+        })
+    }
+
+    refresh()
+    modelContext.addEventListener('toolchange', refresh)
+    return () => {
+      active = false
+      modelContext.removeEventListener('toolchange', refresh)
+    }
+  }, [refreshKey])
+
+  return tools
 }
 
 /**
