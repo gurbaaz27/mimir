@@ -24,6 +24,7 @@ import { AnnotationToolbar } from './annotation-toolbar'
 import { ChatSidebar } from './chat-sidebar'
 import { DocumentSidebar } from './document-sidebar'
 import { PdfViewer } from './pdf-viewer'
+import { ReaderTour } from './reader-tour'
 import { SearchPanel } from './search-panel'
 import { SelectionBar } from './selection-bar'
 import { cn } from '#/lib/utils'
@@ -286,7 +287,7 @@ export function ReaderWorkspace() {
           </div>
           <div className="flex min-w-0 items-center justify-end gap-0.5">
             <AgentStatus documentId={activeDocument.id} variant="reader" />
-            <IconButton data-search-trigger label="Search" shortcut="⌘F" icon={SearchIcon} active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} />
+            <IconButton data-search-trigger data-tour="search" label="Search" shortcut="⌘F" icon={SearchIcon} active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} />
             <IconButton className="max-[600px]:hidden" label="Rotate clockwise" icon={RotateCwIcon} onClick={() => setRotation(rotation + 90)} />
             <IconButton className="max-[600px]:hidden" label="Undo" shortcut="⌘Z" icon={UndoIcon} disabled={!history.length} onClick={() => void undo()} />
             <IconButton className="max-[600px]:hidden" label="Redo" shortcut="⇧⌘Z" icon={RedoIcon} disabled={!future.length} onClick={() => void redo()} />
@@ -311,9 +312,10 @@ export function ReaderWorkspace() {
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
-            <Button size="mobileIcon" className="ml-[9px] min-h-[34px] px-[15px] text-[12.5px] font-[570] max-[600px]:[&_.icon-glyph]:flex max-[600px]:[&_.icon-glyph]:size-4 max-[600px]:[&_.icon-glyph]:shrink-0 max-[600px]:[&_.icon-glyph]:items-center max-[600px]:[&_.icon-glyph]:justify-center" onClick={() => setExportOpen(true)}><DownloadIcon size={16} /> Export</Button>
+            <Button data-tour="export" size="mobileIcon" className="ml-[9px] min-h-[34px] px-[15px] text-[12.5px] font-[570] max-[600px]:[&_.icon-glyph]:flex max-[600px]:[&_.icon-glyph]:size-4 max-[600px]:[&_.icon-glyph]:shrink-0 max-[600px]:[&_.icon-glyph]:items-center max-[600px]:[&_.icon-glyph]:justify-center" onClick={() => setExportOpen(true)}><DownloadIcon size={16} /> Export</Button>
             <Button
               tone="paper"
+              data-tour="chat"
               aria-label="Ask Mimir"
               aria-pressed={chatOpen}
               className={cn(
@@ -342,7 +344,7 @@ export function ReaderWorkspace() {
           sidebarOpen && 'grid-cols-[228px_minmax(0,1fr)] max-[1100px]:grid-cols-[196px_minmax(0,1fr)] max-[820px]:grid-cols-[minmax(0,1fr)]',
         )}>
           {!sidebarOpen && (
-            <button className="absolute top-3 left-3 z-5 inline-grid size-[34px] animate-panel-in place-items-center rounded-[10px] border border-line bg-paper text-ink-soft shadow-menu transition-transform duration-130 ease-spring active:scale-[.92]" type="button" aria-label="Open document navigation" onClick={() => setSidebarOpen(true)}><PanelLeftOpenIcon size={17} /></button>
+            <button className="absolute top-3 left-3 z-5 inline-grid size-[34px] animate-panel-in place-items-center rounded-[10px] border border-line bg-paper text-ink-soft shadow-menu transition-transform duration-130 ease-spring active:scale-[.92]" type="button" data-tour="navigator-open" aria-label="Open document navigation" onClick={() => setSidebarOpen(true)}><PanelLeftOpenIcon size={17} /></button>
           )}
           {pdf && <DocumentSidebar pdf={pdf} open={sidebarOpen} />}
           <section className="relative min-h-0 min-w-0 overflow-hidden bg-desk after:pointer-events-none after:absolute after:inset-0 after:z-6 after:shadow-[inset_0_10px_20px_-14px_oklch(.3_.03_70/.55)] after:content-['']" aria-label="PDF reader">
@@ -358,6 +360,8 @@ export function ReaderWorkspace() {
         </div>
           <ChatSidebar documentId={activeDocument.id} open={chatOpen} onClose={() => setChatOpen(false)} />
         </div>
+
+        <ReaderTour ready={Boolean(pdf)} chatOpen={chatOpen} />
 
         {toast && (
           <div className="fixed right-[18px] bottom-[18px] z-80 flex min-h-11 max-w-[380px] animate-toast-in items-center gap-3 rounded-xl bg-ink py-2.5 pr-[11px] pl-[15px] text-xs text-paper shadow-menu [&_button]:rounded-[7px] [&_button]:border-0 [&_button]:bg-paper [&_button]:px-2.5 [&_button]:py-1.5 [&_button]:text-[11px] [&_button]:font-[560] [&_button]:text-ink [&_button]:transition-transform [&_button]:duration-130 [&_button]:ease-spring [&_button]:active:scale-[.94]" role="status">

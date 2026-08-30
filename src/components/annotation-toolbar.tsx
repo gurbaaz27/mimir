@@ -193,10 +193,11 @@ export function AnnotationToolbar() {
   }
 
   return (
-    <div className="pointer-events-none absolute top-[54px] right-0 left-0 z-20 flex min-h-[66px] items-center justify-center px-3 max-[820px]:justify-start max-[820px]:overflow-visible max-[820px]:px-2">
+    <div className="pointer-events-none absolute top-[54px] right-0 left-0 z-40 flex min-h-[66px] items-center justify-center px-3 max-[820px]:justify-start max-[820px]:overflow-visible max-[820px]:px-2">
       <div
         ref={trayRef}
         data-slot="annotation-toolbar"
+        data-tour="toolbar"
         data-orientation={orientation}
         className={cn(
           'pointer-events-auto flex translate-x-(--toolbar-offset-x) translate-y-(--toolbar-offset-y) items-center gap-0.5 rounded-[14px] bg-paper px-[5px] py-1 shadow-[inset_0_0_0_1px_oklch(.2_.005_60/.06),inset_0_1px_0_var(--color-paper),0_1px_2px_oklch(.25_.02_70/.1),0_6px_16px_oklch(.28_.03_70/.12)]',

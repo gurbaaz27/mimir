@@ -61,5 +61,6 @@ describe('annotation toolbar', () => {
     const tray = await screen.findByRole('toolbar')
     await waitFor(() => expect(tray.dataset.orientation).toBe('vertical'))
     expect(tray.style.getPropertyValue('--toolbar-offset-x')).toBe('472px')
+    expect(tray.parentElement?.classList.contains('z-40')).toBe(true)
   })
 })

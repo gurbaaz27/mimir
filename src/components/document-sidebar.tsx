@@ -74,7 +74,7 @@ export function DocumentSidebar({ pdf, open }: { pdf: PDFDocumentProxy; open: bo
       'min-h-0 min-w-0 overflow-hidden bg-paper shadow-[inset_-1px_0_0_var(--color-desk-deep)] [&>*]:min-w-[228px]',
       'max-[820px]:absolute max-[820px]:inset-y-0 max-[820px]:left-0 max-[820px]:z-12 max-[820px]:w-[min(290px,82vw)] max-[820px]:-translate-x-[101%] max-[820px]:shadow-menu max-[820px]:transition-transform max-[820px]:duration-280 max-[820px]:ease-spring max-[820px]:[&>*]:min-w-0',
       open && 'max-[820px]:translate-x-0',
-    )} aria-label="Document navigation" inert={!open}>
+    )} data-tour="navigator" aria-label="Document navigation" inert={!open}>
       <div className="flex h-11 items-center gap-[3px] border-b border-line p-1.5">
         <div className="flex h-8 min-w-0 flex-1 gap-[3px] [&_button]:inline-flex [&_button]:flex-1 [&_button]:items-center [&_button]:justify-center [&_button]:gap-1.5 [&_button]:rounded-lg [&_button]:border-0 [&_button]:bg-transparent [&_button]:text-[11px] [&_button]:text-muted [&_button]:transition-[background,color,transform] [&_button]:duration-150 [&_button]:ease-spring [&_button]:hover:text-ink-soft [&_button]:active:scale-95 [&_button[aria-selected=true]]:bg-sunken [&_button[aria-selected=true]]:font-[540] [&_button[aria-selected=true]]:text-ink" role="tablist" aria-label="Navigation view">
           <button type="button" role="tab" aria-selected={tab === 'pages'} onClick={() => setTab('pages')}>

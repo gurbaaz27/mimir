@@ -3,6 +3,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { useRef } from 'react'
 import { Tooltip } from 'radix-ui'
 import { cn } from '#/lib/utils'
+import { Kbd } from './ui/kbd'
 import type { AnimatedIcon, AnimatedIconHandle } from './icons'
 
 const buttonVariants = cva(
@@ -121,9 +122,9 @@ export function IconButton({ label, icon: Icon, size = 17, shortcut, active, dan
         </button>
       </Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content className="z-90 flex animate-tooltip-in items-center gap-[9px] rounded-[7px] bg-ink px-[9px] py-1.5 text-[11px] font-[520] text-paper shadow-menu" sideOffset={7}>
+        <Tooltip.Content data-slot="tooltip-content" className="z-90 flex animate-tooltip-in items-center gap-[9px] rounded-[7px] bg-ink px-[9px] py-1.5 text-[11px] font-[520] text-paper shadow-menu" sideOffset={7}>
           {label}
-          {shortcut && <kbd className="font-sans text-[10px] leading-none font-medium text-[oklch(.72_.006_60)]">{shortcut}</kbd>}
+          {shortcut && <Kbd>{shortcut}</Kbd>}
           <Tooltip.Arrow className="fill-ink" />
         </Tooltip.Content>
       </Tooltip.Portal>

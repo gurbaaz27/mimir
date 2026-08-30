@@ -22,6 +22,7 @@ import { canExecuteOverWebmcp } from '#/ai/webmcp-bridge.client'
 import { chatPersistence } from '#/lib/db.client'
 import { cn } from '#/lib/utils'
 import { Button, IconButton, dialogOverlayClass, dialogSurfaceClass } from './ui'
+import { Kbd, KbdGroup } from './ui/kbd'
 
 // Module scope on purpose: the transport and tool implementations close over
 // nothing from React and can be shared by every document conversation.
@@ -409,12 +410,16 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
           <p
             className={cn(
               'm-0 h-0 overflow-hidden pl-1 text-[10px] text-faint transition-[height,opacity] duration-160 ease-out',
-              draft.trim() ? 'h-4 pt-1.5 opacity-100' : 'opacity-0',
+              draft.trim() ? 'h-[22px] pt-1.5 opacity-100' : 'opacity-0',
             )}
             aria-hidden="true"
           >
-            <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift</kbd>
-            <kbd className="font-sans"> Enter</kbd> for a new line
+            <Kbd>Enter</Kbd> to send ·{' '}
+            <KbdGroup>
+              <Kbd>Shift</Kbd>
+              <Kbd>Enter</Kbd>
+            </KbdGroup>{' '}
+            for a new line
           </p>
         </div>
       </div>
