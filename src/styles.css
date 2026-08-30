@@ -654,9 +654,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   .document-sidebar { position: absolute; z-index: 12; top: 0; bottom: 0; left: 0; width: min(290px,82vw); box-shadow: var(--menu-shadow); transform: translateX(-101%); transition: transform 280ms var(--spring); }
   .reader-body.has-sidebar .document-sidebar { transform: none; }
   .document-sidebar > * { min-width: 0; }
-  .annotation-toolbar { justify-content: flex-start; overflow-x: auto; padding: 0 8px; pointer-events: auto; scrollbar-width: none; }
-  .annotation-toolbar::-webkit-scrollbar { display: none; }
-  .tool-tray { flex: 0 0 auto; border-radius: 0; background: transparent; box-shadow: none; }
+  /* Keep the full-width positioning layer out of hit testing. Only the tray
+     itself should intercept a touch; otherwise its empty area becomes a
+     scroll container over the document and blocks the sidebar toggle. */
+  .annotation-toolbar { justify-content: flex-start; overflow: visible; padding: 0 8px; pointer-events: none; }
+  .tool-tray { flex: 0 0 auto; pointer-events: auto; }
+  .tool-tray:not(.is-vertical) { max-width: calc(100vw - 16px); overflow-x: auto; scrollbar-width: none; }
+  .tool-tray:not(.is-vertical)::-webkit-scrollbar { display: none; }
   .tool-tray .icon-button:not(.is-active) { background: var(--paper); }
   .tool-tray .icon-button:not(.is-active):hover { background: var(--surface); }
   .color-trigger { background: var(--paper); }
