@@ -10,7 +10,19 @@ export function SearchPanel() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Array<SearchResult>>([])
   const [searching, setSearching] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node) || panelRef.current?.contains(target)) return
+      if (target instanceof Element && target.closest('[data-search-trigger]')) return
+      setOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true)
+  }, [setOpen])
 
   useEffect(() => inputRef.current?.focus(), [])
   useEffect(() => {
@@ -29,7 +41,7 @@ export function SearchPanel() {
   }, [activeDocument, query])
 
   return (
-    <div className="fixed top-[134px] right-5 z-30 flex min-h-12 w-90 animate-menu-in items-center gap-2 rounded-[14px] border border-line bg-paper p-[7px] shadow-menu max-[820px]:top-[126px] max-[820px]:right-3 max-[820px]:w-[min(360px,calc(100vw-24px))]" role="search">
+    <div ref={panelRef} className="fixed top-[62px] right-5 z-30 flex min-h-12 w-90 animate-menu-in items-center gap-2 rounded-[14px] border border-line bg-paper p-[7px] shadow-menu max-[820px]:top-[62px] max-[820px]:right-3 max-[820px]:w-[min(360px,calc(100vw-24px))]" role="search">
       <div className="flex h-[34px] flex-1 items-center gap-2 rounded-[10px] border border-line bg-surface px-2.5 [&>.icon-glyph]:shrink-0 [&>.icon-glyph]:text-muted [&>svg]:shrink-0 [&>svg]:text-muted">
         {searching ? <LoaderCircle className="animate-spin-slow" size={16} /> : <SearchIcon size={16} />}
         <input className="min-w-0 w-full border-0 bg-transparent p-0 text-xs text-ink outline-0 placeholder:text-faint" ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this PDF" aria-label="Search this PDF" />

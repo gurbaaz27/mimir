@@ -284,7 +284,7 @@ export function ReaderWorkspace() {
           </div>
           <div className="flex min-w-0 items-center justify-end gap-0.5">
             <AgentStatus documentId={activeDocument.id} variant="reader" />
-            <IconButton label="Search" shortcut="⌘F" icon={SearchIcon} active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} />
+            <IconButton data-search-trigger label="Search" shortcut="⌘F" icon={SearchIcon} active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} />
             <IconButton className="max-[600px]:hidden" label="Rotate clockwise" icon={RotateCwIcon} onClick={() => setRotation(rotation + 90)} />
             <IconButton className="max-[600px]:hidden" label="Undo" shortcut="⌘Z" icon={UndoIcon} disabled={!history.length} onClick={() => void undo()} />
             <IconButton className="max-[600px]:hidden" label="Redo" shortcut="⇧⌘Z" icon={RedoIcon} disabled={!future.length} onClick={() => void redo()} />
