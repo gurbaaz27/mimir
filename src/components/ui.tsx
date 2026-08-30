@@ -59,12 +59,12 @@ export function MimirMark({ compact = false, large = false }: { compact?: boolea
         className={cn(
           'block size-[30px] shrink-0 rounded-lg object-cover shadow-[inset_0_0_0_1px_oklch(.2_.005_60/.07)]',
           large && 'size-[38px] rounded-[10px] max-[600px]:size-8 max-[600px]:rounded-lg',
-          compact && 'size-[26px] rounded-[7px]',
+          compact && 'size-[28px] rounded-[8px]',
         )}
         src="/mimir-logo.png"
         alt=""
-        width={large ? 38 : compact ? 26 : 30}
-        height={large ? 38 : compact ? 26 : 30}
+        width={large ? 38 : compact ? 28 : 30}
+        height={large ? 38 : compact ? 28 : 30}
       />
       {!compact && <span className={cn('font-display text-xl font-[640] tracking-[-.03em]', large && 'text-[25px] max-[600px]:text-[21px]')}>mimir</span>}
     </div>

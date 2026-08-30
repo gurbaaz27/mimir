@@ -9,7 +9,6 @@ import { editorStore, useEditorStore, type EditorTool } from '#/lib/editor-store
 import { loadPdf } from '#/lib/pdf.client'
 import {
   ArrowLeftIcon,
-  BotIcon,
   ChevronDownIcon,
   DownloadIcon,
   MinusIcon,
@@ -253,7 +252,6 @@ export function ReaderWorkspace() {
         <header className="relative z-30 grid grid-cols-[minmax(260px,1fr)_auto_minmax(260px,1fr)] items-center border-b border-line bg-paper px-[11px] shadow-[0_1px_0_oklch(.2_.005_60/.03)] max-[1100px]:grid-cols-[minmax(190px,1fr)_auto_minmax(190px,1fr)] max-[820px]:grid-cols-[minmax(0,1fr)_auto]">
           <div className="flex min-w-0 items-center gap-[7px]">
             <IconButton label="Back to library" icon={ArrowLeftIcon} onClick={() => void goToLibrary()} />
-            <MimirMark compact />
             <div className="ml-0.5 min-w-0">
               <strong className="block max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap font-display text-lg leading-none font-[620] tracking-[-.03em] max-[1100px]:max-w-40 max-[1100px]:text-base max-[600px]:max-w-30 max-[600px]:text-[15px]">{documentLabel(activeDocument)}</strong>
             </div>
@@ -288,7 +286,6 @@ export function ReaderWorkspace() {
           </div>
           <div className="flex min-w-0 items-center justify-end gap-0.5">
             <AgentStatus documentId={activeDocument.id} variant="reader" />
-            <IconButton label="Ask Mimir" icon={BotIcon} active={chatOpen} onClick={() => setChatOpen(!chatOpen)} />
             <IconButton data-search-trigger label="Search" shortcut="⌘F" icon={SearchIcon} active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} />
             <IconButton className="max-[600px]:hidden" label="Rotate clockwise" icon={RotateCwIcon} onClick={() => setRotation(rotation + 90)} />
             <IconButton className="max-[600px]:hidden" label="Undo" shortcut="⌘Z" icon={UndoIcon} disabled={!history.length} onClick={() => void undo()} />
@@ -315,6 +312,18 @@ export function ReaderWorkspace() {
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
             <Button size="mobileIcon" className="ml-[9px] min-h-[34px] px-[15px] text-[12.5px] font-[570] max-[600px]:[&_.icon-glyph]:flex max-[600px]:[&_.icon-glyph]:size-4 max-[600px]:[&_.icon-glyph]:shrink-0 max-[600px]:[&_.icon-glyph]:items-center max-[600px]:[&_.icon-glyph]:justify-center" onClick={() => setExportOpen(true)}><DownloadIcon size={16} /> Export</Button>
+            <Button
+              tone="paper"
+              aria-label="Ask Mimir"
+              aria-pressed={chatOpen}
+              className={cn(
+                'ml-1.5 size-[34px] min-h-[34px] shrink-0 gap-0 rounded-[9px] border-transparent p-0 active:scale-90 enabled:hover:border-transparent',
+                chatOpen && 'border-ink bg-surface shadow-[inset_0_0_0_1px_var(--color-ink),0_2px_3px_oklch(.2_.005_60/.16),0_6px_12px_oklch(.28_.02_70/.14)]',
+              )}
+              onClick={() => setChatOpen(!chatOpen)}
+            >
+              <MimirMark compact />
+            </Button>
           </div>
         </header>
 
