@@ -1,5 +1,6 @@
 import { ClientOnly, createFileRoute } from '@tanstack/react-router'
 import { LibraryView } from '#/components/library-view'
+import { AppBoot } from '#/components/ui'
 
 export const Route = createFileRoute('/')({
   component: Home,
@@ -8,7 +9,7 @@ export const Route = createFileRoute('/')({
 
 function Home() {
   return (
-    <ClientOnly fallback={<div className="app-boot">Preparing your local workspace…</div>}>
+    <ClientOnly fallback={<AppBoot>Preparing your local workspace…</AppBoot>}>
       <LibraryView />
     </ClientOnly>
   )

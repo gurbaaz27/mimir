@@ -6,6 +6,7 @@ import { mergeTextQuads } from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
 import { AnnotationOverlay } from './annotation-overlay'
 import { NoteLayer } from './note-layer'
+import { cn } from '#/lib/utils'
 
 interface PdfPageProps {
   pdf: PDFDocumentProxy
@@ -122,13 +123,13 @@ export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations, onPageWi
   return (
     <div
       ref={pageRef}
-      className={`pdf-page ${ready ? 'is-ready' : ''}`}
+      className="relative mt-14 shrink-0 origin-top overflow-visible bg-paper shadow-page transition duration-160 ease-out [&>canvas]:absolute [&>canvas]:inset-0 [&>canvas]:block"
       data-page-number={pageNumber}
       style={{ width: dimensions.width, height: dimensions.height }}
       onPointerUp={() => void createTextMarkup()}
     >
       <canvas ref={canvasRef} aria-label={`Page ${pageNumber}`} />
-      <div ref={textRef} className="textLayer" />
+      <div ref={textRef} className="absolute inset-0 z-2 origin-top-left overflow-hidden leading-none [text-size-adjust:none] [&_span]:absolute [&_span]:origin-top-left [&_span]:cursor-text [&_span]:whitespace-pre [&_span]:text-transparent [&_::selection]:bg-[oklch(.82_.05_85/.7)]" />
       <AnnotationOverlay
         pageNumber={pageNumber}
         annotations={annotations}
@@ -143,8 +144,8 @@ export function PdfPage({ pdf, pageNumber, zoom, rotation, annotations, onPageWi
         pageHeight={dimensions.height}
         zoom={zoom}
       />
-      {!ready && <div className="page-skeleton" aria-hidden="true"><span /><span /><span /><span /></div>}
-      <span className="page-number-badge" aria-hidden="true">{pageNumber}</span>
+      {!ready && <div className={cn('absolute inset-0 z-4 bg-paper px-[11%] py-[10%] transition-opacity duration-180 [&_span]:mb-[3.4%] [&_span]:block [&_span]:h-[2.4%] [&_span]:w-4/5 [&_span]:animate-skeleton [&_span]:rounded [&_span]:bg-[oklch(.945_.003_85)] [&_span:nth-child(2)]:w-[64%] [&_span:nth-child(3)]:mt-[8%] [&_span:nth-child(3)]:w-[82%] [&_span:nth-child(4)]:w-[70%]', ready && 'pointer-events-none opacity-0')} aria-hidden="true"><span /><span /><span /><span /></div>}
+      <span className="absolute top-3 left-[-36px] grid h-5 w-[26px] place-items-center rounded-md bg-[oklch(1_0_0/.5)] text-[10px] font-[540] text-bark tabular-nums max-[820px]:hidden" aria-hidden="true">{pageNumber}</span>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { Annotation } from '#/lib/annotations'
 import { editorStore, useEditorStore } from '#/lib/editor-store.client'
 import { PdfPage } from './pdf-page'
+import { cn } from '#/lib/utils'
 
 const LARGE_PAGE_JUMP = 5
 const MIN_ZOOM = 0.5
@@ -262,7 +263,11 @@ export function PdfViewer({ pdf, pageCount, zoom, rotation, annotations }: PdfVi
   return (
     <div
       ref={scrollerRef}
-      className={`document-scroller ${tool === 'pan' ? 'is-pan-enabled' : ''} ${isPanning ? 'is-panning' : ''}`}
+      className={cn(
+        'h-full w-full touch-pan-x touch-pan-y overflow-auto overscroll-contain [scrollbar-gutter:stable]',
+        tool === 'pan' && 'cursor-grab',
+        isPanning && 'cursor-grabbing scroll-auto select-none',
+      )}
       data-testid="document-scroller"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -274,13 +279,13 @@ export function PdfViewer({ pdf, pageCount, zoom, rotation, annotations }: PdfVi
         setIsPanning(false)
       }}
     >
-      <div className="virtual-page-stack" style={{ height: virtualizer.getTotalSize(), minWidth: maxPageWidth }}>
+      <div className="relative w-full" style={{ height: virtualizer.getTotalSize(), minWidth: maxPageWidth }}>
         {virtualizer.getVirtualItems().map((item) => (
           <div
             key={item.key}
             ref={virtualizer.measureElement}
             data-index={item.index}
-            className="virtual-page-item"
+            className="absolute top-0 left-0 flex w-full justify-center"
             style={{ transform: `translateY(${item.start}px)` }}
           >
             <PdfPage

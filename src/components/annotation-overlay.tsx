@@ -9,6 +9,7 @@ import {
   type ResizeHandle,
 } from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
+import { cn } from '#/lib/utils'
 import { EndpointHandles, ResizeHandles } from './annotation-resize-handles'
 
 interface AnnotationOverlayProps {
@@ -23,6 +24,8 @@ type ShapeAnnotation = Extract<Annotation, { kind: 'shape' }>
 type TransformOperation =
   | { kind: 'resize'; handle: ResizeHandle }
   | { kind: 'endpoint'; endpoint: 'start' | 'end' }
+
+const annotationDraftClass = 'fill-none stroke-2 opacity-84 [stroke-linecap:round] [stroke-linejoin:round] [vector-effect:non-scaling-stroke]'
 
 function asPoint(event: { clientX: number; clientY: number }, svg: SVGSVGElement): Point {
   const rect = svg.getBoundingClientRect()
@@ -65,7 +68,7 @@ function AnnotationGlyph({
 
   return (
     <g
-      className={`annotation-glyph ${selected ? 'is-selected' : ''}`}
+      className="cursor-pointer [pointer-events:visiblePainted] hover:saturate-110"
       data-annotation-id={annotation.id}
       transform={dragOffset ? `translate(${dragOffset.dx} ${dragOffset.dy})` : undefined}
       onPointerDown={(event) => onPointerDown(event, annotation.id)}
@@ -143,7 +146,7 @@ function AnnotationGlyph({
       )}
       {selected && bounds && (
         <rect
-          className="annotation-selection"
+          className="pointer-events-none fill-none stroke-ink stroke-[1.5px] [stroke-dasharray:.012_.008] [vector-effect:non-scaling-stroke]"
           x={bounds.x}
           y={bounds.y}
           width={bounds.width}
@@ -429,7 +432,11 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
     <>
     <svg
       ref={svgRef}
-      className={`annotation-layer ${isDirectTool ? 'is-drawing' : ''} ${tool === 'select' ? 'is-selecting' : ''}`}
+      className={cn(
+        'pointer-events-none absolute inset-0 z-3 size-full overflow-visible',
+        isDirectTool && 'pointer-events-auto touch-none cursor-crosshair',
+        tool === 'select' && 'pointer-events-auto touch-none cursor-default',
+      )}
       viewBox="0 0 1 1"
       preserveAspectRatio="none"
       onPointerDown={handlePointerDown}
@@ -451,13 +458,13 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
           />
         )
       })}
-      {selectionBounds && <rect className="annotation-marquee" {...selectionBounds} />}
+      {selectionBounds && <rect className="pointer-events-none fill-[oklch(.52_.075_155/.08)] stroke-ink stroke-[1.5px] [stroke-dasharray:6_4] [vector-effect:non-scaling-stroke]" {...selectionBounds} />}
       {draftBounds && (tool === 'rectangle' || tool === 'ellipse') &&
         (tool === 'rectangle' ? (
-          <rect className="annotation-draft" {...draftBounds} stroke={color} />
+          <rect className={annotationDraftClass} {...draftBounds} stroke={color} />
         ) : (
           <ellipse
-            className="annotation-draft"
+            className={annotationDraftClass}
             cx={draftBounds.x + draftBounds.width / 2}
             cy={draftBounds.y + draftBounds.height / 2}
             rx={draftBounds.width / 2}
@@ -467,7 +474,7 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
         ))}
       {startRef.current && draftEnd && (tool === 'line' || tool === 'arrow') && (
         <line
-          className="annotation-draft"
+          className={annotationDraftClass}
           x1={startRef.current.x}
           y1={startRef.current.y}
           x2={draftEnd.x}
@@ -476,7 +483,7 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
         />
       )}
       {tool === 'ink' && pointsRef.current.length > 1 && (
-        <polyline className="annotation-draft" points={pointsRef.current.map((point) => `${point.x},${point.y}`).join(' ')} stroke={color} />
+        <polyline className={annotationDraftClass} points={pointsRef.current.map((point) => `${point.x},${point.y}`).join(' ')} stroke={color} />
       )}
     </svg>
     {tool === 'select' && selectedIds.length === 1 && drawableAnnotations.map((annotation) => {
@@ -484,7 +491,7 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
       const displayedAnnotation = transformPreview?.id === annotation.id ? transformPreview : annotation
       if (displayedAnnotation.bounds) {
         return (
-          <div key={annotation.id} className="annotation-transform-layer">
+          <div key={annotation.id} className="pointer-events-none absolute inset-0 z-5">
             <ResizeHandles
               bounds={displayedAnnotation.bounds}
               coordinateSpace="page"
@@ -497,7 +504,7 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
       }
       if (displayedAnnotation.start && displayedAnnotation.end) {
         return (
-          <div key={annotation.id} className="annotation-transform-layer">
+          <div key={annotation.id} className="pointer-events-none absolute inset-0 z-5">
             <EndpointHandles
               start={displayedAnnotation.start}
               end={displayedAnnotation.end}

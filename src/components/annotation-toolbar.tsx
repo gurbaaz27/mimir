@@ -16,7 +16,8 @@ import {
 } from '#/components/icons'
 import { annotationColors } from '#/lib/annotations'
 import { useEditorStore, type EditorTool } from '#/lib/editor-store.client'
-import { IconButton } from './ui'
+import { cn } from '#/lib/utils'
+import { IconButton, menuContentClass } from './ui'
 
 const tools: Array<{ tool: EditorTool; label: string; shortcut: string; icon: AnimatedIcon }> = [
   { tool: 'select', label: 'Select', shortcut: 'Esc', icon: PointerIcon },
@@ -192,16 +193,29 @@ export function AnnotationToolbar() {
   }
 
   return (
-    <div className="annotation-toolbar">
+    <div className="pointer-events-none absolute top-[54px] right-0 left-0 z-20 flex min-h-[66px] items-center justify-center px-3 max-[820px]:justify-start max-[820px]:overflow-visible max-[820px]:px-2">
       <div
         ref={trayRef}
-        className={`tool-tray ${orientation === 'vertical' ? 'is-vertical' : ''} ${isDragging ? 'is-dragging' : ''}`}
+        data-slot="annotation-toolbar"
+        data-orientation={orientation}
+        className={cn(
+          'pointer-events-auto flex translate-x-(--toolbar-offset-x) translate-y-(--toolbar-offset-y) items-center gap-0.5 rounded-[14px] bg-paper px-[5px] py-1 shadow-[inset_0_0_0_1px_oklch(.2_.005_60/.06),inset_0_1px_0_var(--color-paper),0_1px_2px_oklch(.25_.02_70/.1),0_6px_16px_oklch(.28_.03_70/.12)]',
+          'max-[1100px]:[&_[data-slot=icon-button]]:w-8 max-[820px]:shrink-0 max-[820px]:[&_[data-slot=icon-button]:not([aria-pressed=true])]:bg-paper max-[820px]:[&_[data-slot=icon-button]:not([aria-pressed=true])]:hover:bg-surface',
+          orientation === 'vertical'
+            ? 'flex-col items-stretch'
+            : 'max-[820px]:max-w-[calc(100vw-16px)] max-[820px]:overflow-x-auto max-[820px]:[scrollbar-width:none] max-[820px]:[&::-webkit-scrollbar]:hidden',
+          isDragging && 'cursor-grabbing select-none',
+        )}
         role="toolbar"
         aria-label="Annotation tools"
         style={{ '--toolbar-offset-x': `${toolbarOffset.x}px`, '--toolbar-offset-y': `${toolbarOffset.y}px` } as CSSProperties}
       >
         <button
-          className="toolbar-drag-handle"
+          className={cn(
+            'grid h-[30px] w-[22px] shrink-0 touch-none place-items-center rounded-[7px] border-0 border-r border-line bg-transparent p-0 text-faint transition-[background,color] duration-150 hover:bg-surface hover:text-ink-soft active:cursor-grabbing',
+            orientation === 'vertical' ? 'mb-0.5 h-[22px] w-[30px] border-r-0 border-b' : 'mr-0.5',
+            isDragging ? 'cursor-grabbing' : 'cursor-grab',
+          )}
           type="button"
           aria-label="Move annotation toolbar"
           onPointerDown={startDrag}
@@ -210,22 +224,28 @@ export function AnnotationToolbar() {
           onPointerCancel={endDrag}
           onLostPointerCapture={() => endDrag()}
         >
-          <span className="toolbar-drag-dots" aria-hidden="true"><i /><i /><i /></span>
+          <span className={cn('grid gap-[3px] [&_i]:block [&_i]:size-[3px] [&_i]:rounded-full [&_i]:bg-current', orientation === 'vertical' && 'flex')} aria-hidden="true"><i /><i /><i /></span>
         </button>
         <button
-          className="toolbar-orientation-toggle"
+          className={cn('grid h-[30px] w-[26px] shrink-0 place-items-center rounded-[7px] border-0 bg-transparent p-0 text-faint transition-[background,color,transform] duration-150 ease-spring hover:bg-surface hover:text-ink-soft active:scale-[.92]', orientation === 'vertical' && 'h-[26px] w-[30px]')}
           type="button"
           aria-label={orientation === 'horizontal' ? 'Make toolbar vertical' : 'Make toolbar horizontal'}
           aria-pressed={orientation === 'vertical'}
           title={orientation === 'horizontal' ? 'Make toolbar vertical' : 'Make toolbar horizontal'}
           onClick={toggleOrientation}
         >
-          <span className={`toolbar-orientation-glyph ${orientation === 'horizontal' ? 'is-vertical' : 'is-horizontal'}`} aria-hidden="true">
+          <span className={cn(
+            'flex size-[13px] items-center justify-center gap-0.5 [&_i]:block [&_i]:rounded-full [&_i]:bg-current',
+            orientation === 'horizontal' ? '[&_i]:h-[13px] [&_i]:w-0.5' : 'flex-col [&_i]:h-0.5 [&_i]:w-[13px]',
+          )} aria-hidden="true">
             <i /><i /><i />
           </span>
         </button>
         {tools.map(({ tool, label, shortcut, icon }, index) => (
-          <span className={index === 2 || index === 5 || index === 8 ? 'tool-group-start' : ''} key={tool}>
+          <span className={cn(
+            'inline-flex',
+            (index === 2 || index === 5 || index === 8) && (orientation === 'vertical' ? 'mt-[9px] border-t border-line pt-[9px]' : 'ml-[9px] border-l border-line pl-[9px]'),
+          )} key={tool}>
             <IconButton
               label={label}
               shortcut={shortcut}
@@ -237,19 +257,25 @@ export function AnnotationToolbar() {
         ))}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
-            <button className="color-trigger" type="button" aria-label={`Annotation color: ${activeColor?.name ?? 'custom'}`}>
-              <span className="color-swatch" style={{ background: color }} />
-              <span className="color-label">{activeColor?.name ?? 'Color'}</span>
+            <button className={cn(
+              'ml-[9px] inline-flex h-[30px] items-center gap-[7px] rounded-[9px] border-0 bg-sunken pr-[11px] pl-2 text-[11px] font-[520] tracking-[-.005em] text-ink-soft transition-[background,color,transform] duration-150 ease-spring hover:bg-[oklch(.94_.007_85)] hover:text-ink active:scale-[.94] max-[820px]:bg-paper',
+              orientation === 'vertical' && 'mt-[9px] ml-0 w-[30px] justify-center p-0',
+            )} type="button" aria-label={`Annotation color: ${activeColor?.name ?? 'custom'}`}>
+              <span className="size-3.5 shrink-0 rounded-full border-2 border-paper shadow-[0_0_0_1px_var(--color-line-strong)]" style={{ background: color }} />
+              <span className={cn(orientation === 'vertical' && 'hidden')}>{activeColor?.name ?? 'Color'}</span>
             </button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
-            <DropdownMenu.Content className="color-menu" align="end" sideOffset={8}>
-              <span>Annotation color</span>
-              <div>
+            <DropdownMenu.Content className={cn(menuContentClass, 'min-w-[190px] p-[11px]')} align="end" sideOffset={8}>
+              <span className="mb-[9px] block text-[10.5px] text-muted">Annotation color</span>
+              <div className="flex gap-[9px]">
                 {annotationColors.map((item) => (
                   <DropdownMenu.Item
                     key={item.value}
-                    className={`color-option ${color === item.value ? 'is-active' : ''}`}
+                    className={cn(
+                      'relative size-6 rounded-full border-2 border-paper bg-(--swatch) p-0 shadow-[0_0_0_1px_var(--color-line-strong)] outline-none transition-transform duration-140 ease-spring hover:scale-112 data-[highlighted]:scale-112',
+                      color === item.value && `after:absolute after:-inset-1 after:rounded-full after:border-[1.5px] after:border-ink after:content-['']`,
+                    )}
                     aria-label={item.name}
                     onSelect={() => setColor(item.value)}
                     style={{ '--swatch': item.value } as React.CSSProperties}
