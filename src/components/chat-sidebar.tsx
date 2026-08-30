@@ -4,7 +4,18 @@ import { useChat } from '@tanstack/ai-react'
 import { ThinkingState } from '@aicss/react/thinking-state'
 import { LoaderCircle } from 'lucide-react'
 import { Dialog } from 'radix-ui'
-import { ArrowUpRightIcon, BotIcon, TrashIcon, XIcon, ZapIcon } from '#/components/icons'
+import {
+  ArrowUpRightIcon,
+  BookTextIcon,
+  BotIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ScanTextIcon,
+  SearchIcon,
+  TrashIcon,
+  XIcon,
+  ZapIcon,
+} from '#/components/icons'
 import { ChatMarkdown } from './chat-markdown'
 import { webmcpClientTools } from '#/ai/client-tools'
 import { canExecuteOverWebmcp } from '#/ai/webmcp-bridge.client'
@@ -26,39 +37,154 @@ const stateLabel: Record<string, string> = {
   error: 'failed',
 }
 
+const settledStates = new Set(['complete', 'error'])
+
+/** The three openings that actually suit a PDF, offered before the first turn. */
+const openers = [
+  { icon: ScanTextIcon, label: 'Summarize this document' },
+  { icon: SearchIcon, label: 'What are the key definitions?' },
+  { icon: BookTextIcon, label: 'Walk me through the main argument' },
+]
+
+type ToolCallSummary = { id: string; name: string; detail: string | null; state: string }
+
+type Block =
+  | { kind: 'text'; key: string; content: string }
+  | { kind: 'tools'; key: string; calls: Array<ToolCallSummary> }
+
 /**
- * One line per tool call. The model reaches everything through two wrapper
- * tools, so showing "run_webmcp_tool" would tell the reader nothing — the name
- * that matters is the page tool inside it.
+ * A turn can fire half a dozen tools before it says a word, and one bordered
+ * row per call turns the transcript into a wall of boxes. Consecutive calls
+ * collapse into a single trail instead: open while the work is happening, one
+ * summary line once it has settled.
  */
-function ToolCallRow({
-  name,
-  detail,
-  state,
-}: {
-  name: string
-  detail: string | null
-  state: string
-}) {
+function ToolTrail({ calls }: { calls: Array<ToolCallSummary> }) {
+  const running = calls.some((call) => !settledStates.has(call.state))
+  const failed = calls.some((call) => call.state === 'error')
+  // `null` means "follow the work" — the reader's click takes over from there.
+  const [override, setOverride] = useState<boolean | null>(null)
+  const open = override ?? running
+  const active = calls.find((call) => !settledStates.has(call.state))
+
   return (
     <div
       className={cn(
-        'flex items-center gap-[7px] rounded-lg border border-line bg-surface px-2.5 py-[7px] text-[11px] text-ink-soft',
-        state === 'error' && 'border-danger/40 text-danger',
+        'overflow-hidden rounded-xl border border-line bg-[linear-gradient(180deg,var(--color-paper),var(--color-surface))] shadow-lift',
+        failed && 'border-danger/35',
       )}
     >
-      {state === 'complete' || state === 'error' ? (
-        <ZapIcon size={13} />
-      ) : (
-        <LoaderCircle className="size-[13px] shrink-0 animate-spin-slow" />
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-2 py-[7px] text-left transition-colors duration-150 hover:bg-sunken/70"
+        aria-expanded={open}
+        onClick={() => setOverride(!open)}
+      >
+        <span
+          className={cn(
+            'grid size-[22px] shrink-0 place-items-center rounded-lg border border-[oklch(.9_.02_85)] bg-cream text-bark',
+            running && 'border-clay/45',
+            failed && 'border-danger/35 bg-[oklch(.975_.014_28)] text-danger',
+          )}
+          aria-hidden="true"
+        >
+          {running ? <LoaderCircle className="size-[13px] animate-spin-slow" /> : <ZapIcon size={13} />}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">
+          {running && active ? (
+            <>
+              <span className="text-muted">Running </span>
+              <code className="font-mono text-[10.5px] text-ink">{active.name}</code>
+            </>
+          ) : failed ? (
+            <span className="text-danger">A tool call failed</span>
+          ) : (
+            <>
+              <span className="font-[560] text-ink">
+                {calls.length} tool {calls.length === 1 ? 'call' : 'calls'}
+              </span>
+              <span className="ml-1.5 text-muted">on this page</span>
+            </>
+          )}
+        </span>
+        <ChevronDownIcon
+          className={cn('shrink-0 text-faint transition-transform duration-160 ease-spring', !open && '-rotate-90')}
+          size={14}
+        />
+      </button>
+
+      {open && (
+        <ol className="m-0 list-none border-t border-line/80 py-1.5 pr-2 pl-[21px]">
+          {calls.map((call) => {
+            const settled = settledStates.has(call.state)
+            return (
+              <li
+                key={call.id}
+                // The rail is drawn on the item so the last step's line stops
+                // at its own dot instead of running past the trail.
+                className="relative flex items-center gap-2 py-[5px] pl-[15px] before:absolute before:top-0 before:bottom-0 before:left-0 before:w-px before:bg-line before:content-[''] first:before:top-1/2 last:before:bottom-1/2"
+              >
+                <span
+                  className={cn(
+                    'absolute left-px z-1 grid size-2 -translate-x-1/2 place-items-center rounded-full bg-paper ring-1 ring-line-strong',
+                    settled && 'bg-clay/70 ring-clay/40',
+                    call.state === 'error' && 'bg-danger ring-danger/40',
+                  )}
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 flex-1 truncate">
+                  <code className="font-mono text-[10.5px] text-ink">{call.name}</code>
+                  {call.detail && <span className="ml-1.5 text-[10.5px] text-muted">{call.detail}</span>}
+                </span>
+                <span
+                  className={cn(
+                    'flex shrink-0 items-center gap-1 text-[10px] text-muted',
+                    call.state === 'error' && 'text-danger',
+                  )}
+                >
+                  {call.state === 'complete' ? (
+                    <CheckIcon className="text-clay" size={12} />
+                  ) : (
+                    (stateLabel[call.state] ?? call.state)
+                  )}
+                </span>
+              </li>
+            )
+          })}
+        </ol>
       )}
-      <span className="min-w-0 flex-1 truncate">
-        <code className="font-mono text-[10.5px] text-ink">{name}</code>
-        {detail && <span className="ml-1.5 text-muted">{detail}</span>}
-      </span>
-      <span className="shrink-0 text-[10px] text-muted">{stateLabel[state] ?? state}</span>
     </div>
   )
+}
+
+/**
+ * Text and tool calls arrive interleaved; the trail only reads as one unit if
+ * neighbouring calls are folded together before anything is drawn.
+ */
+function toBlocks(parts: ReturnType<typeof useChat>['messages'][number]['parts']): Array<Block> {
+  const blocks: Array<Block> = []
+  parts.forEach((part, index) => {
+    if (part.type === 'text') {
+      blocks.push({ kind: 'text', key: `text-${index}`, content: part.content })
+      return
+    }
+    if (part.type !== 'tool-call') return
+    // `run_webmcp_tool` is a wrapper; the reader cares which page tool it is
+    // actually driving.
+    // The per-tool input typing is lost once the part is read off the generic
+    // message list, so the wrapper's payload is narrowed by hand here.
+    const input = part.input as { title?: string } | undefined
+    const inner = part.name === 'run_webmcp_tool' ? (input?.title ?? null) : null
+    const call: ToolCallSummary = {
+      id: part.id,
+      name: inner ?? part.name,
+      detail: inner ? null : 'reading available tools',
+      state: part.state,
+    }
+    const last = blocks.at(-1)
+    if (last?.kind === 'tools') last.calls.push(call)
+    else blocks.push({ kind: 'tools', key: `tools-${index}`, calls: [call] })
+  })
+  return blocks
 }
 
 export function ChatSidebar({ documentId, open, onClose }: { documentId: string; open: boolean; onClose: () => void }) {
@@ -91,10 +217,10 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
     if (node) node.scrollTop = node.scrollHeight
   }, [messages, isLoading])
 
-  const submit = () => {
-    const content = draft.trim()
+  const send = (content: string) => {
     if (!content || isLoading) return
     setDraft('')
+    if (inputRef.current) inputRef.current.style.height = 'auto'
     void sendMessage(content)
   }
 
@@ -106,101 +232,144 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
       inert={!open ? true : undefined}
     >
       <div className="flex h-full min-h-0 w-[352px] max-w-full min-w-0 flex-1 flex-col">
-        <header className="flex h-[46px] shrink-0 items-center gap-2 border-b border-line px-3">
-          <BotIcon size={16} />
-          <strong className="flex-1 font-display text-[13px] font-[600] tracking-[-.02em]">Ask Mimir</strong>
-          {messages.length > 0 && (
-            <button
-              type="button"
-              className="rounded-md px-2 py-1 text-[11px] text-muted transition-colors hover:bg-sunken hover:text-ink"
-              onClick={() => setClearOpen(true)}
-            >
-              Clear
-            </button>
-          )}
+        <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-line px-3">
+          <span
+            className="grid size-[27px] shrink-0 place-items-center rounded-[9px] border border-[oklch(.9_.02_85)] bg-[linear-gradient(180deg,var(--color-paper),var(--color-cream))] text-bark shadow-lift"
+            aria-hidden="true"
+          >
+            <BotIcon size={15} />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+            <strong className="font-display text-[13px] leading-none font-[620] tracking-[-.02em]">Ask Mimir</strong>
+            <span className="flex items-center gap-[5px] text-[10px] leading-none text-faint">
+              <i
+                className={cn(
+                  'size-[5px] rounded-full bg-faint',
+                  overWebmcp && 'bg-moss shadow-[0_0_0_2.5px_oklch(.52_.075_155/.16)]',
+                )}
+                aria-hidden="true"
+              />
+              {overWebmcp ? 'reading with you over WebMCP' : 'reading with you'}
+            </span>
+          </span>
+          {messages.length > 0 && <IconButton label="Clear" icon={TrashIcon} size={15} onClick={() => setClearOpen(true)} />}
           <IconButton label="Close chat" icon={XIcon} size={16} onClick={onClose} />
         </header>
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3.5">
-          {messages.length === 0 ? (
-            <div className="flex h-full flex-col justify-center gap-2 px-1 text-xs text-muted">
-              <strong className="font-display text-[15px] font-[600] tracking-[-.02em] text-ink">
-                Read this PDF together.
-              </strong>
-              <p className="m-0 leading-[1.55]">
-                Ask about the document and Mimir works through the same tools a browser agent
-                gets — searching the text, jumping to pages, and marking passages up.
-              </p>
-              {!overWebmcp && (
-                <p className="m-0 rounded-lg border border-line bg-surface p-2.5 leading-[1.5] text-ink-soft">
-                  This browser has no WebMCP, so tools run directly in the page instead of through
-                  <code className="mx-1 font-mono text-[10.5px]">document.modelContext</code>. Chat
-                  works the same; it just isn’t exercising the agent surface.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={cn('flex flex-col gap-1.5', message.role === 'user' && 'items-end')}
-                >
-                  {message.parts.map((part, index) => {
-                    if (part.type === 'text') {
-                      // Only the assistant writes markdown. What the reader
-                      // typed is shown back exactly as typed — running it
-                      // through a parser would eat their underscores and
-                      // asterisks and change their own words.
-                      return message.role === 'user' ? (
+        <div className="relative min-h-0 flex-1">
+          <div ref={scrollRef} className="scroll-slim h-full overflow-y-auto px-3 py-3.5">
+            {messages.length === 0 ? (
+              <div className="flex h-full flex-col justify-center gap-3 px-1">
+                <div className="flex flex-col gap-2 text-xs text-muted">
+                  <strong className="font-display text-[17px] font-[620] tracking-[-.03em] text-ink">
+                    Read this PDF together.
+                  </strong>
+                  <p className="m-0 leading-[1.55]">
+                    Ask about the document and Mimir works through the same tools a browser agent
+                    gets — searching the text, jumping to pages, and marking passages up.
+                  </p>
+                </div>
+                <div className="mt-1 flex flex-col gap-1.5">
+                  {openers.map(({ icon: Icon, label }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className="group flex items-center gap-2 rounded-xl border border-line bg-[linear-gradient(180deg,var(--color-paper),var(--color-surface))] py-[9px] pr-2 pl-2.5 text-left text-[11.5px] text-ink-soft shadow-lift transition-[transform,border-color,box-shadow] duration-160 ease-spring hover:-translate-y-px hover:border-line-strong hover:text-ink hover:shadow-[0_2px_2px_oklch(.2_.005_60/.06),0_8px_16px_oklch(.28_.02_70/.1)] active:translate-y-0"
+                      onClick={() => send(label)}
+                    >
+                      <span className="text-clay" aria-hidden="true">
+                        <Icon size={14} />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
+                      <span
+                        className="text-faint opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                        aria-hidden="true"
+                      >
+                        <ArrowUpRightIcon size={13} />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {!overWebmcp && (
+                  <p className="m-0 rounded-xl border border-line bg-surface p-2.5 text-xs leading-[1.5] text-ink-soft">
+                    This browser has no WebMCP, so tools run directly in the page instead of through
+                    <code className="mx-1 font-mono text-[10.5px]">document.modelContext</code>. Chat
+                    works the same; it just isn’t exercising the agent surface.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      'flex animate-message-in flex-col gap-1.5',
+                      message.role === 'user' && 'items-end',
+                    )}
+                  >
+                    {message.role === 'assistant' && (
+                      <span className="flex items-center gap-[5px] pl-px font-display text-[10.5px] font-[560] tracking-[.02em] text-faint">
+                        <BotIcon size={11} />
+                        mimir
+                      </span>
+                    )}
+                    {toBlocks(message.parts).map((block) =>
+                      block.kind === 'tools' ? (
+                        <ToolTrail key={block.key} calls={block.calls} />
+                      ) : // Only the assistant writes markdown. What the reader typed is
+                      // shown back exactly as typed — running it through a parser
+                      // would eat their underscores and asterisks and change their
+                      // own words.
+                      message.role === 'user' ? (
                         <p
-                          key={index}
-                          className="m-0 max-w-full rounded-xl rounded-br-[5px] bg-sunken px-3 py-2 text-xs leading-[1.6] whitespace-pre-wrap text-ink"
+                          key={block.key}
+                          className="m-0 max-w-[88%] rounded-2xl rounded-br-[7px] border border-line bg-[linear-gradient(180deg,var(--color-paper),var(--color-surface))] px-3 py-2 text-xs leading-[1.6] whitespace-pre-wrap text-ink shadow-lift"
                         >
-                          {part.content}
+                          {block.content}
                         </p>
                       ) : (
-                        <ChatMarkdown key={index} content={part.content} />
-                      )
-                    }
-                    if (part.type === 'tool-call') {
-                      // `run_webmcp_tool` is a wrapper; the reader cares which
-                      // page tool it is actually driving.
-                      const inner =
-                        part.name === 'run_webmcp_tool' ? (part.input?.title ?? null) : null
-                      return (
-                        <ToolCallRow
-                          key={part.id}
-                          name={inner ?? part.name}
-                          detail={inner ? null : 'reading available tools'}
-                          state={part.state}
-                        />
-                      )
-                    }
-                    return null
-                  })}
-                </div>
-              ))}
-              {isLoading && (
-                <div className="flex items-center gap-2 text-[11px] text-muted">
-                  <ThinkingState />
-                </div>
-              )}
-            </div>
-          )}
+                        <ChatMarkdown key={block.key} content={block.content} />
+                      ),
+                    )}
+                  </div>
+                ))}
+                {isLoading && (
+                  <div className="flex animate-message-in items-center gap-2 text-[11px] text-muted">
+                    <span className="relative grid size-[22px] shrink-0 place-items-center" aria-hidden="true">
+                      <span className="absolute inset-0 animate-ping-soft rounded-full bg-clay/18" />
+                      <span className="size-[7px] rounded-full bg-clay" />
+                    </span>
+                    <ThinkingState />
+                  </div>
+                )}
+              </div>
+            )}
 
-          {error && (
-            <p className="mt-3 m-0 rounded-lg border border-danger/40 bg-[oklch(.97_.02_28)] p-2.5 text-[11px] leading-[1.5] text-danger">
-              {error.message}
-            </p>
-          )}
+            {error && (
+              <p className="m-0 mt-3 flex items-start gap-2 rounded-xl border border-danger/35 bg-[oklch(.975_.014_28)] p-2.5 text-[11px] leading-[1.5] text-danger">
+                <span className="mt-px shrink-0" aria-hidden="true">
+                  <ZapIcon size={13} />
+                </span>
+                {error.message}
+              </p>
+            )}
+          </div>
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-[linear-gradient(180deg,var(--color-paper),transparent)]"
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-[linear-gradient(0deg,var(--color-paper),transparent)]"
+            aria-hidden="true"
+          />
         </div>
 
         <div className="shrink-0 border-t border-line p-2.5">
-          <div className="flex items-end gap-1.5 rounded-xl border border-line bg-surface p-1.5 focus-within:border-line-strong">
+          <div className="flex items-end gap-1.5 rounded-2xl border border-line bg-[linear-gradient(180deg,var(--color-surface),var(--color-paper))] p-1.5 shadow-[inset_0_1px_0_var(--color-paper)] transition-[border-color,box-shadow] duration-160 ease-out focus-within:border-line-strong focus-within:shadow-[inset_0_1px_0_var(--color-paper),0_0_0_3px_oklch(.2_.008_60/.05)]">
             <textarea
               ref={inputRef}
-              className="max-h-32 min-h-[30px] flex-1 resize-none border-0 bg-transparent px-1.5 py-1 text-xs leading-[1.5] text-ink outline-none placeholder:text-faint"
+              className="max-h-32 min-h-[30px] flex-1 resize-none border-0 bg-transparent px-1.5 py-1 text-xs leading-[1.5] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
               rows={1}
               placeholder="Ask about this document…"
               value={draft}
@@ -212,14 +381,14 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
-                  submit()
+                  send(draft.trim())
                 }
               }}
             />
             {isLoading ? (
               <button
                 type="button"
-                className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-ink text-paper transition-transform duration-130 ease-spring active:scale-90"
+                className="grid size-[30px] shrink-0 place-items-center rounded-[10px] bg-[linear-gradient(180deg,oklch(.335_.014_62),oklch(.185_.008_60))] text-paper shadow-[inset_0_1px_0_oklch(1_0_0/.2),0_1px_2px_oklch(.2_.01_60/.25)] transition-transform duration-130 ease-spring active:scale-90"
                 aria-label="Stop generating"
                 onClick={() => stop()}
               >
@@ -228,15 +397,25 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
             ) : (
               <button
                 type="button"
-                className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-ink text-paper transition-transform duration-130 ease-spring active:scale-90 disabled:bg-line disabled:text-faint"
+                className="grid size-[30px] shrink-0 place-items-center rounded-[10px] bg-[linear-gradient(180deg,oklch(.335_.014_62),oklch(.185_.008_60))] text-paper shadow-[inset_0_1px_0_oklch(1_0_0/.2),0_1px_2px_oklch(.2_.01_60/.25)] transition-[transform,background,box-shadow] duration-130 ease-spring active:scale-90 disabled:bg-none disabled:bg-sunken disabled:text-faint disabled:shadow-none"
                 aria-label="Send message"
                 disabled={!draft.trim()}
-                onClick={submit}
+                onClick={() => send(draft.trim())}
               >
                 <ArrowUpRightIcon size={15} />
               </button>
             )}
           </div>
+          <p
+            className={cn(
+              'm-0 h-0 overflow-hidden pl-1 text-[10px] text-faint transition-[height,opacity] duration-160 ease-out',
+              draft.trim() ? 'h-4 pt-1.5 opacity-100' : 'opacity-0',
+            )}
+            aria-hidden="true"
+          >
+            <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift</kbd>
+            <kbd className="font-sans"> Enter</kbd> for a new line
+          </p>
         </div>
       </div>
 

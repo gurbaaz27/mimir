@@ -42,6 +42,8 @@
   --shadow-lift: 0 1px 2px oklch(0.2 0.005 60 / .06);
 
   --animate-spin-slow: spin .9s linear infinite;
+  --animate-ping-soft: ping-soft 1.8s var(--ease-spring) infinite;
+  --animate-message-in: message-in 240ms var(--ease-spring) both;
   --animate-tooltip-in: tooltip-in 130ms var(--ease-spring);
   --animate-menu-in: menu-in 140ms var(--ease-spring);
   --animate-mark-in: mark-in 620ms var(--ease-spring) both;
@@ -79,7 +81,15 @@
   .icon-glyph, .icon-glyph > span { @apply inline-flex; }
 }
 
+/* A quiet scrollbar for the panels that scroll inside the reader chrome. */
+@utility scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes ping-soft { 60%, 100% { opacity: 0; transform: scale(1.7); } }
+@keyframes message-in { from { opacity: 0; transform: translateY(6px); } }
 @keyframes tooltip-in { from { opacity: 0; transform: translateY(-3px) scale(.96); } }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-5px) scale(.97); } }
 @keyframes mark-in { from { opacity: 0; transform: translateY(10px) scale(.9); } }
