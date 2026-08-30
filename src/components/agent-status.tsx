@@ -96,21 +96,18 @@ export function AgentStatus({ documentId, variant = 'reader' }: AgentStatusProps
                 const schemaExpanded = schemaOpen === tool.name
                 return (
                   <section className={`agent-tool ${expanded ? 'is-expanded' : ''}`} key={tool.name}>
-                    <div className="agent-tool-trigger">
+                    <button
+                      className="agent-tool-trigger"
+                      type="button"
+                      aria-expanded={expanded}
+                      onClick={() => {
+                        setExpandedTool(expanded ? null : tool.name)
+                        setSchemaOpen(null)
+                      }}
+                    >
                       <strong>{tool.title}</strong>
-                      <button
-                        className="agent-tool-toggle"
-                        type="button"
-                        aria-label={`${expanded ? 'Collapse' : 'Expand'} ${tool.title}`}
-                        aria-expanded={expanded}
-                        onClick={() => {
-                          setExpandedTool(expanded ? null : tool.name)
-                          setSchemaOpen(null)
-                        }}
-                      >
-                        <ChevronDownIcon className={expanded ? '' : 'is-collapsed'} size={18} />
-                      </button>
-                    </div>
+                      <ChevronDownIcon className={expanded ? '' : 'is-collapsed'} size={18} />
+                    </button>
                     {expanded && (
                       <div className="agent-tool-details">
                         <div className="agent-tool-name"><BookTextIcon size={18} /><span>{tool.name}</span></div>

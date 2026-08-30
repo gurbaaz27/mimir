@@ -383,15 +383,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .agent-tools-summary > span { display: grid; gap: 3px; }
 .agent-tools-summary strong { font-size: 14px; font-weight: 450; letter-spacing: -.01em; line-height: 1.2; }
 .agent-tools-summary small { color: oklch(0.72 0 0); font-size: 11px; line-height: 1.25; }
-.agent-tools-summary > svg, .agent-tool-toggle > svg { flex: 0 0 auto; color: oklch(0.7 0 0); transition: transform 160ms ease-out; }
-.agent-tools-summary > svg.is-collapsed, .agent-tool-toggle > svg.is-collapsed { transform: rotate(-90deg); }
+.agent-tools-summary > svg, .agent-tool-trigger > svg { flex: 0 0 auto; color: oklch(0.7 0 0); transition: transform 160ms ease-out; }
+.agent-tools-summary > svg.is-collapsed, .agent-tool-trigger > svg.is-collapsed { transform: rotate(-90deg); }
 .agent-tools-list { display: grid; gap: 3px; }
 .agent-tool { border-radius: 10px; }
-.agent-tool-trigger { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 10px; border-radius: 9px; }
+.agent-tool-trigger { display: flex; width: 100%; min-height: 42px; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 10px; border: 0; border-radius: 9px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .agent-tool-trigger:hover, .agent-tools-summary:hover { background: oklch(1 0 0 / .06); }
 .agent-tool-trigger strong { font-size: 14px; font-weight: 450; letter-spacing: -.01em; line-height: 1.25; }
-.agent-tool-toggle { display: grid; width: 28px; height: 28px; flex: 0 0 auto; padding: 0; place-items: center; border: 0; border-radius: 7px; color: inherit; background: transparent; cursor: pointer; }
-.agent-tool-toggle:hover { background: oklch(1 0 0 / .08); }
 .agent-tool-details { padding: 0 10px 10px; color: oklch(0.7 0 0); }
 .agent-tool-name { display: flex; align-items: center; gap: 7px; margin: 3px 0 13px; font-size: 12px; }
 .agent-tool-name svg { color: oklch(0.67 0 0); }
@@ -658,6 +656,34 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
   .library-nav-button { min-height: 30px; gap: 6px; padding: 0 9px; font-size: 10.5px; }
   .library-nav-icon { width: 14px; height: 14px; }
   .agent-status.library { height: 28px; gap: 5px; padding-right: 8px; padding-left: 8px; font-size: 10px; }
+  /* The status control shares the header with another action on mobile. Keep
+     the tools panel tied to the viewport so its width is not measured from
+     the status button's narrower column. */
+  .agent-status-menu.library .agent-tools-menu,
+  .agent-status-menu.reader .agent-tools-menu {
+    position: fixed;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+  .agent-status-menu.library .agent-tools-menu {
+    top: 62px;
+    max-height: calc(100dvh - 74px);
+  }
+  .agent-status-menu.reader .agent-tools-menu {
+    top: 42px;
+    max-height: calc(100dvh - 54px);
+  }
+  .agent-tool-trigger strong { font-size: 13px; }
+  .export-dialog .dialog-actions > button,
+  .remove-dialog .dialog-actions > button {
+    min-width: 0;
+    padding-right: 11px;
+    padding-left: 11px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .remove-dialog-actions > button { flex: 1 1 0; }
   .hero p.hero-pitch { font-size: 15.5px; line-height: 1.85; }
   .document-open { grid-template-columns: 38px minmax(0,1fr) 24px; gap: 12px; padding: 12px 48px 12px 16px; }
   .document-updated { display: none; }
