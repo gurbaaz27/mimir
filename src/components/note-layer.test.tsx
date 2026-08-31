@@ -21,8 +21,18 @@ const note: Annotation = {
   resolved: false,
 }
 
+const originalLocalStorage = Object.getOwnPropertyDescriptor(window, 'localStorage')
+const storage = new Map<string, string>()
+const localStorageMock = {
+  clear: () => storage.clear(),
+  getItem: (key: string) => storage.get(key) ?? null,
+  setItem: (key: string, value: string) => storage.set(key, value),
+}
+
 describe('note layer', () => {
   beforeEach(() => {
+    Object.defineProperty(window, 'localStorage', { configurable: true, value: localStorageMock })
+    localStorageMock.clear()
     editorStore.setState({
       tool: 'select',
       selectedAnnotationId: note.id,
@@ -30,7 +40,10 @@ describe('note layer', () => {
     })
   })
 
-  afterEach(() => cleanup())
+  afterEach(() => {
+    cleanup()
+    if (originalLocalStorage) Object.defineProperty(window, 'localStorage', originalLocalStorage)
+  })
 
   it('collapses the selected note when a pointer lands outside it', async () => {
     render(
@@ -47,5 +60,14 @@ describe('note layer', () => {
     fireEvent.pointerDown(screen.getByTestId('outside'))
 
     await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+    expect(window.localStorage.getItem('mimir:sticky-note-collapsed:note-1')).toBe('true')
+  })
+
+  it('restores a note as collapsed after it is remounted', () => {
+    window.localStorage.setItem('mimir:sticky-note-collapsed:note-1', 'true')
+
+    render(<NoteLayer pageNumber={1} annotations={[note]} pageWidth={612} pageHeight={792} zoom={1} />)
+
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 })

@@ -22,6 +22,7 @@ const PIN_SIZE = 22
 const TEXT_BOX_LINE_HEIGHT = 1.28
 const TEXT_BOX_VERTICAL_PADDING = 4
 const TEXT_BOX_VERTICAL_BORDER = 2
+const stickyNoteCollapsedStoragePrefix = 'mimir:sticky-note-collapsed:'
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max))
@@ -35,6 +36,26 @@ function pointInNoteLayer(event: { clientX: number; clientY: number; currentTarg
   return {
     x: clamp((event.clientX - rect.left) / rect.width, 0, 1),
     y: clamp((event.clientY - rect.top) / rect.height, 0, 1),
+  }
+}
+
+function readStickyNoteCollapsed(id: string, fallback: boolean) {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const saved = window.localStorage.getItem(`${stickyNoteCollapsedStoragePrefix}${id}`)
+    if (saved === 'true') return true
+    if (saved === 'false') return false
+  } catch {
+    // The note still works for this session when storage is unavailable.
+  }
+  return fallback
+}
+
+function persistStickyNoteCollapsed(id: string, collapsed: boolean) {
+  try {
+    window.localStorage.setItem(`${stickyNoteCollapsedStoragePrefix}${id}`, String(collapsed))
+  } catch {
+    // The note still works for this session when storage is unavailable.
   }
 }
 
@@ -61,7 +82,7 @@ function StickyNote({
   const update = useEditorStore((state) => state.updateAnnotation)
   const annotationDrag = useEditorStore((state) => state.annotationDrag)
   const [body, setBody] = useState(annotation.body)
-  const [collapsed, setCollapsed] = useState(annotation.resolved)
+  const [collapsed, setCollapsedState] = useState(() => readStickyNoteCollapsed(annotation.id, annotation.resolved))
   const [dragPoint, setDragPoint] = useState<Point | null>(null)
   const [resizeBounds, setResizeBounds] = useState<NormalizedRect | null>(null)
   const suppressClickRef = useRef(false)
@@ -70,9 +91,20 @@ function StickyNote({
   const resizeBoundsRef = useRef<NormalizedRect | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const previousSelectedRef = useRef(selected)
+  const previousResolvedRef = useRef(annotation.resolved)
+
+  const setCollapsed = (nextCollapsed: boolean) => {
+    setCollapsedState(nextCollapsed)
+    persistStickyNoteCollapsed(annotation.id, nextCollapsed)
+  }
 
   useEffect(() => setBody(annotation.body), [annotation.body])
-  useEffect(() => setCollapsed(annotation.resolved), [annotation.resolved])
+  useEffect(() => {
+    if (previousResolvedRef.current !== annotation.resolved) {
+      setCollapsed(annotation.resolved)
+      previousResolvedRef.current = annotation.resolved
+    }
+  }, [annotation.resolved])
   useEffect(() => {
     if (previousSelectedRef.current && !selected) setCollapsed(true)
     previousSelectedRef.current = selected
