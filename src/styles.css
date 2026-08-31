@@ -1,4 +1,5 @@
 @import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 @import "tailwindcss";
 
 /* Overused Grotesk — SIL OFL 1.1, see /fonts/OverusedGrotesk-LICENSE.txt */
@@ -35,6 +36,7 @@
 
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-display: "Overused Grotesk", "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
   --ease-spring: cubic-bezier(.2, .9, .25, 1);
 
   --shadow-page: 0 0 0 1px oklch(0.2 0.005 60 / .07), 0 1px 2px oklch(0.2 0.005 60 / .08), 0 14px 34px oklch(0.25 0.02 70 / .1);
