@@ -13,6 +13,7 @@ import {
   ScanTextIcon,
   SearchIcon,
   TrashIcon,
+  WrenchIcon,
   XIcon,
   ZapIcon,
 } from '#/components/icons'
@@ -105,7 +106,7 @@ function ToolTrail({ calls }: { calls: Array<ToolCallSummary> }) {
           )}
           aria-hidden="true"
         >
-          {running ? <LoaderCircle className="size-[13px] animate-spin-slow" /> : <ZapIcon size={13} />}
+          {running ? <LoaderCircle className="size-[13px] animate-spin-slow" /> : <WrenchIcon size={13} />}
         </span>
         <span className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">
           {running && active ? (

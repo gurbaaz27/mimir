@@ -168,9 +168,12 @@ export function ReaderWorkspace() {
       } else if ((event.metaKey || event.ctrlKey) && key === 'f') {
         event.preventDefault()
         setSearchOpen(true)
-      } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId && selectedIds.length === 1) {
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedIds.length > 0) {
         event.preventDefault()
-        void deleteAnnotations([selectedId])
+        void deleteAnnotations(
+          selectedIds,
+          selectedIds.length === 1 ? 'Delete annotation' : `Delete ${selectedIds.length} annotations`,
+        )
       } else if (event.shiftKey && key === 's') {
         setTool('strikeout')
       } else if (!event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -190,7 +193,7 @@ export function ReaderWorkspace() {
       window.removeEventListener('keyup', keyup)
       window.removeEventListener('blur', restoreTemporaryPan)
     }
-  }, [deleteAnnotations, redo, selectedId, selectedIds.length, setSearchOpen, setTool, undo])
+  }, [deleteAnnotations, redo, selectedId, selectedIds, setSearchOpen, setTool, undo])
 
   useEffect(() => {
     return () => {

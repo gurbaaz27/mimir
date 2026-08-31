@@ -42,6 +42,7 @@ export { SearchIcon } from './search'
 export { UnderlineIcon } from './underline'
 export { UndoIcon } from './undo'
 export { UploadIcon } from './upload'
+export { WrenchIcon } from '../ui/wrench'
 export { XIcon } from './x'
 export { ZapIcon } from './zap'
 
