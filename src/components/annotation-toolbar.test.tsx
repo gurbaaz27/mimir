@@ -63,4 +63,31 @@ describe('annotation toolbar', () => {
     expect(tray.style.getPropertyValue('--toolbar-offset-x')).toBe('472px')
     expect(tray.parentElement?.classList.contains('z-40')).toBe(true)
   })
+
+  it('moves by the matching width when either desktop sidebar opens', () => {
+    const { rerender } = render(
+      <Tooltip.Provider>
+        <AnnotationToolbar />
+      </Tooltip.Provider>,
+    )
+
+    const viewport = screen.getByRole('toolbar').parentElement
+    expect(viewport).not.toBeNull()
+    expect(viewport?.hasAttribute('data-sidebar-open')).toBe(false)
+    expect(viewport?.hasAttribute('data-chat-open')).toBe(false)
+
+    rerender(
+      <Tooltip.Provider>
+        <AnnotationToolbar sidebarOpen chatOpen />
+      </Tooltip.Provider>,
+    )
+
+    expect(viewport?.dataset.sidebarOpen).toBe('true')
+    expect(viewport?.dataset.chatOpen).toBe('true')
+    expect(viewport?.classList.contains('[--toolbar-sidebar-shift:228px]')).toBe(true)
+    expect(viewport?.classList.contains('[--toolbar-chat-shift:352px]')).toBe(true)
+    expect(viewport?.classList.contains('max-[1100px]:[--toolbar-sidebar-shift:196px]')).toBe(true)
+    expect(viewport?.classList.contains('max-[1100px]:[--toolbar-chat-shift:312px]')).toBe(true)
+    expect(viewport?.classList.contains('max-[820px]:hidden')).toBe(true)
+  })
 })

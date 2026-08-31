@@ -329,7 +329,7 @@ export function ReaderWorkspace() {
           </div>
         </header>
 
-        <AnnotationToolbar />
+        <AnnotationToolbar sidebarOpen={sidebarOpen} chatOpen={chatOpen} />
         {searchOpen && <SearchPanel />}
 
         {/* The chat column is its own grid so the reader's own sidebar/viewer

@@ -37,6 +37,7 @@ const toolbarSettingsKey = 'mimir:annotation-toolbar-position'
 
 type ToolbarOffset = { x: number; y: number }
 type ToolbarOrientation = 'horizontal' | 'vertical'
+type AnnotationToolbarProps = { sidebarOpen?: boolean; chatOpen?: boolean }
 
 function isToolbarSettings(value: unknown): value is ToolbarOffset & { orientation?: ToolbarOrientation } {
   if (!value || typeof value !== 'object') return false
@@ -58,7 +59,7 @@ function persistToolbarSettings(offset: ToolbarOffset, orientation: ToolbarOrien
   }
 }
 
-export function AnnotationToolbar() {
+export function AnnotationToolbar({ sidebarOpen = false, chatOpen = false }: AnnotationToolbarProps) {
   const activeTool = useEditorStore((state) => state.tool)
   const setTool = useEditorStore((state) => state.setTool)
   const color = useEditorStore((state) => state.color)
@@ -193,7 +194,15 @@ export function AnnotationToolbar() {
   }
 
   return (
-    <div className="pointer-events-none absolute top-[54px] right-0 left-0 z-40 flex min-h-[66px] items-center justify-center px-3 max-[820px]:justify-start max-[820px]:overflow-visible max-[820px]:px-2">
+    <div
+      className={cn(
+        'pointer-events-none absolute top-[54px] right-0 left-0 z-40 flex min-h-[66px] translate-x-[calc(var(--toolbar-sidebar-shift)-var(--toolbar-chat-shift))] items-center justify-center px-3 [--toolbar-chat-shift:0px] [--toolbar-sidebar-shift:0px] transition-transform duration-280 ease-spring max-[820px]:justify-start max-[820px]:overflow-visible max-[820px]:px-2',
+        sidebarOpen && '[--toolbar-sidebar-shift:228px] max-[1100px]:[--toolbar-sidebar-shift:196px] max-[820px]:[--toolbar-sidebar-shift:0px]',
+        chatOpen && '[--toolbar-chat-shift:352px] max-[1100px]:[--toolbar-chat-shift:312px] max-[820px]:hidden',
+      )}
+      data-sidebar-open={sidebarOpen || undefined}
+      data-chat-open={chatOpen || undefined}
+    >
       <div
         ref={trayRef}
         data-slot="annotation-toolbar"
