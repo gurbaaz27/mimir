@@ -213,7 +213,6 @@ function StickyNote({
         type="button"
         className={cn(
           'absolute grid origin-top-left cursor-grab content-center justify-start gap-[3px] rounded-[2px_2px_5px_2px] border-0 bg-[color-mix(in_oklab,var(--note-color)_62%,white)] px-[3px] py-1 shadow-[inset_0_0_0_1px_oklch(.3_.05_75/.18),0_1px_1px_oklch(.3_.05_75/.2),0_4px_8px_oklch(.3_.05_75/.18)] hover:brightness-104 [&_span]:block [&_span]:h-px [&_span]:w-3.5 [&_span]:bg-[oklch(.28_.03_75/.55)] [&_span:last-child]:w-[9px]',
-          selected && 'shadow-[inset_0_0_0_1.5px_var(--color-ink),0_3px_7px_oklch(.3_.05_75/.22)]',
           annotation.resolved && 'opacity-66',
         )}
         style={{
@@ -263,6 +262,7 @@ function StickyNote({
         <ResizeHandles
           bounds={displayedBounds}
           zoom={zoom}
+          hideVisuals
           onPointerDown={handleResizeStart}
           onPointerMove={handleResizeMove}
           onPointerUp={handleResizeEnd}
@@ -270,7 +270,6 @@ function StickyNote({
       )}
       <div className={cn(
         `relative flex size-full flex-col overflow-hidden rounded-sm bg-[color-mix(in_oklab,var(--note-color)_30%,white)] [clip-path:polygon(0_0,100%_0,100%_calc(100%-14px),calc(100%-14px)_100%,0_100%)] after:absolute after:right-0 after:bottom-0 after:border-[7px] after:border-transparent after:border-t-[color-mix(in_oklab,var(--note-color)_58%,white)] after:border-l-[color-mix(in_oklab,var(--note-color)_58%,white)] after:content-['']`,
-        selected && 'shadow-[inset_0_0_0_1.5px_var(--color-ink)]',
         annotation.resolved && 'opacity-66',
       )}>
         <div
@@ -504,6 +503,7 @@ function TextBox({
       {selected && tool === 'select' && selectedIds.length === 1 && (
         <ResizeHandles
           bounds={bounds}
+          hideVisuals
           onPointerDown={handleResizeStart}
           onPointerMove={handleResizeMove}
           onPointerUp={handleResizeEnd}
@@ -512,8 +512,8 @@ function TextBox({
       <textarea
         ref={inputRef}
         className={cn(
-          'h-full min-h-0 w-full resize-none overflow-hidden rounded border border-dashed border-transparent bg-transparent px-[3px] py-0.5 font-sans leading-[1.28] outline-none [overflow-wrap:anywhere] hover:border-[color-mix(in_oklab,var(--note-color)_45%,transparent)]',
-          selected && 'border-solid border-ink bg-[oklch(1_0_0/.6)]',
+          'h-full min-h-0 w-full resize-none overflow-hidden rounded border border-transparent bg-transparent px-[3px] py-0.5 font-sans leading-[1.28] outline-none [overflow-wrap:anywhere]',
+          selected && 'bg-[oklch(1_0_0/.6)]',
           (annotation.autoHeight === false || resizeBounds) && 'overflow-auto',
         )}
         value={body}

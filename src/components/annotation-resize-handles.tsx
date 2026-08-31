@@ -7,6 +7,7 @@ interface ResizeHandlesProps {
   bounds: NormalizedRect
   coordinateSpace?: 'page' | 'parent'
   zoom?: number
+  hideVisuals?: boolean
   onPointerDown: (event: PointerEvent<HTMLButtonElement>, handle: ResizeHandle) => void
   onPointerMove: (event: PointerEvent<HTMLButtonElement>) => void
   onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void
@@ -35,6 +36,7 @@ export function ResizeHandles({
   bounds,
   coordinateSpace = 'parent',
   zoom = 1,
+  hideVisuals = false,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -51,7 +53,12 @@ export function ResizeHandles({
           <button
             key={handle}
             type="button"
-            className={cn(handleClass, resizeCursor[handle], coordinateSpace === 'parent' && 'scale-[calc(1/var(--annotation-handle-zoom,1))]')}
+            className={cn(
+              handleClass,
+              resizeCursor[handle],
+              hideVisuals && 'after:opacity-0',
+              coordinateSpace === 'parent' && 'scale-[calc(1/var(--annotation-handle-zoom,1))]',
+            )}
             style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
             aria-label={`Resize from ${handle}`}
             data-resize-handle={handle}
