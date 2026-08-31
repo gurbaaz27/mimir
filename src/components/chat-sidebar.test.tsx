@@ -12,27 +12,47 @@ describe('PDF chat history', () => {
     await db.chatHistories.clear()
   })
 
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+  })
 
   it('restores the PDF conversation and confirms before deleting it', async () => {
+    const createdAt = new Date()
+    createdAt.setDate(createdAt.getDate() - 1)
+    createdAt.setHours(12, 0, 0, 0)
+    const currentMessageAt = new Date()
     await chatPersistence.setItem('document-1', {
       messages: [
         {
           id: 'message-1',
           role: 'user',
           parts: [{ type: 'text', content: 'What is the main argument?' }],
-          createdAt: new Date('2026-08-30T00:00:00.000Z'),
+          createdAt,
+        },
+        {
+          id: 'message-2',
+          role: 'assistant',
+          parts: [{ type: 'text', content: 'Here is the main argument.' }],
+          createdAt: currentMessageAt,
         },
       ],
     })
     const user = userEvent.setup()
-    render(
+    const { container } = render(
       <Tooltip.Provider>
         <ChatSidebar documentId="document-1" open onClose={() => {}} />
       </Tooltip.Provider>,
     )
 
     expect(await screen.findByText('What is the main argument?')).toBeTruthy()
+    const messageTimes = [...container.querySelectorAll('time')]
+    expect(messageTimes).toHaveLength(2)
+    expect(messageTimes[0]?.getAttribute('dateTime')).toBe(createdAt.toISOString())
+    expect(messageTimes[0]?.textContent).toBe('1 day ago')
+    expect(messageTimes[1]?.getAttribute('dateTime')).toBe(currentMessageAt.toISOString())
+    expect(messageTimes[1]?.textContent).toBe(
+      new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(currentMessageAt),
+    )
     await user.click(screen.getByRole('button', { name: 'Clear' }))
 
     expect(screen.getByRole('dialog')).toBeTruthy()

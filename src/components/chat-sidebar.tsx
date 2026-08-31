@@ -40,6 +40,23 @@ const stateLabel: Record<string, string> = {
 
 const settledStates = new Set(['complete', 'error'])
 
+const messageTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: 'numeric',
+  minute: '2-digit',
+})
+const millisecondsPerDay = 24 * 60 * 60 * 1000
+
+function localCalendarDay(date: Date) {
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / millisecondsPerDay
+}
+
+function formatMessageTime(createdAt: Date | undefined) {
+  if (!createdAt || Number.isNaN(createdAt.getTime())) return null
+  const daysAgo = localCalendarDay(new Date()) - localCalendarDay(createdAt)
+  if (daysAgo > 0) return `${daysAgo} day${daysAgo === 1 ? '' : 's'} ago`
+  return messageTimeFormatter.format(createdAt)
+}
+
 /** The three openings that actually suit a PDF, offered before the first turn. */
 const openers = [
   { icon: ScanTextIcon, label: 'Summarize this document' },
@@ -332,6 +349,17 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
                       ) : (
                         <ChatMarkdown key={block.key} content={block.content} />
                       ),
+                    )}
+                    {message.createdAt && (
+                      <time
+                        dateTime={message.createdAt.toISOString()}
+                        className={cn(
+                          'mt-0.5 pl-px text-[10px] leading-none text-faint',
+                          message.role === 'user' && 'self-end pr-1',
+                        )}
+                      >
+                        {formatMessageTime(message.createdAt)}
+                      </time>
                     )}
                   </div>
                 ))}
