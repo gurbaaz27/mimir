@@ -314,19 +314,29 @@ export function ReaderWorkspace() {
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
             <Button data-tour="export" size="mobileIcon" className="ml-[9px] min-h-[34px] px-[15px] text-[12.5px] font-[570] max-[600px]:[&_.icon-glyph]:flex max-[600px]:[&_.icon-glyph]:size-4 max-[600px]:[&_.icon-glyph]:shrink-0 max-[600px]:[&_.icon-glyph]:items-center max-[600px]:[&_.icon-glyph]:justify-center" onClick={() => setExportOpen(true)}><DownloadIcon size={16} /> Export</Button>
-            <Button
-              tone="paper"
-              data-tour="chat"
-              aria-label="Ask Mimir"
-              aria-pressed={chatOpen}
-              className={cn(
-                'ml-1.5 size-[34px] min-h-[34px] shrink-0 gap-0 rounded-[9px] border-transparent p-0 active:scale-90 enabled:hover:border-transparent',
-                chatOpen && 'border-ink bg-surface shadow-[inset_0_0_0_1px_var(--color-ink),0_2px_3px_oklch(.2_.005_60/.16),0_6px_12px_oklch(.28_.02_70/.14)]',
-              )}
-              onClick={() => setChatOpen(!chatOpen)}
-            >
-              <MimirMark compact />
-            </Button>
+            <Tooltip.Root delayDuration={500}>
+              <Tooltip.Trigger asChild>
+                <Button
+                  tone="paper"
+                  data-tour="chat"
+                  aria-label="Ask mimir"
+                  aria-pressed={chatOpen}
+                  className={cn(
+                    'ml-1.5 size-[34px] min-h-[34px] shrink-0 gap-0 rounded-[9px] border-transparent p-0 active:scale-90 enabled:hover:border-transparent',
+                    chatOpen && 'border-ink bg-surface shadow-[inset_0_0_0_1px_var(--color-ink),0_2px_3px_oklch(.2_.005_60/.16),0_6px_12px_oklch(.28_.02_70/.14)]',
+                  )}
+                  onClick={() => setChatOpen(!chatOpen)}
+                >
+                  <MimirMark compact />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content data-slot="tooltip-content" className="z-90 flex animate-tooltip-in items-center gap-[9px] rounded-[7px] bg-ink px-[9px] py-1.5 text-[11px] font-[520] text-paper shadow-menu" sideOffset={7}>
+                  Ask mimir
+                  <Tooltip.Arrow className="fill-ink" />
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
           </div>
         </header>
 

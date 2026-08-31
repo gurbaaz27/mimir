@@ -245,7 +245,7 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
   return (
     <aside
       className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-line bg-paper"
-      aria-label="Chat with Mimir"
+      aria-label="Chat with mimir"
       aria-hidden={!open}
       inert={!open ? true : undefined}
     >
@@ -258,7 +258,7 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
             <BotIcon size={15} />
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
-            <strong className="font-display text-[13px] leading-none font-[620] tracking-[-.02em]">Ask Mimir</strong>
+            <strong className="font-display text-[13px] leading-none font-[620] tracking-[-.02em]">Ask mimir</strong>
             <span className="flex items-center gap-[5px] text-[10px] leading-none text-faint">
               <i
                 className={cn(
@@ -267,7 +267,7 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
                 )}
                 aria-hidden="true"
               />
-              {overWebmcp ? 'reading with you over WebMCP' : 'reading with you'}
+              {overWebmcp ? 'reading with you over webmcp' : 'reading with you'}
             </span>
           </span>
           {messages.length > 0 && <IconButton label="Clear" icon={TrashIcon} size={15} onClick={() => setClearOpen(true)} />}
@@ -283,7 +283,7 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
                     Read this PDF together.
                   </strong>
                   <p className="m-0 leading-[1.55]">
-                    Ask about the document and Mimir works through the same tools a browser agent
+                    Ask about the document and mimir works through the same tools a browser agent
                     gets — searching the text, jumping to pages, and marking passages up.
                   </p>
                 </div>
@@ -468,7 +468,7 @@ export function ChatSidebar({ documentId, open, onClose }: { documentId: string;
                   Delete this chat?
                 </Dialog.Title>
                 <Dialog.Description className="mt-[7px] mb-0 text-[12.5px] leading-normal text-muted" id="clear-chat-description">
-                  This conversation with Mimir will be permanently removed from this browser.
+                  This conversation with mimir will be permanently removed from this browser.
                 </Dialog.Description>
               </div>
             </div>
