@@ -69,9 +69,14 @@ function StickyNote({
   const resizeRef = useRef<{ pointerId: number; handle: ResizeHandle; bounds: NormalizedRect; moved: boolean } | null>(null)
   const resizeBoundsRef = useRef<NormalizedRect | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const previousSelectedRef = useRef(selected)
 
   useEffect(() => setBody(annotation.body), [annotation.body])
   useEffect(() => setCollapsed(annotation.resolved), [annotation.resolved])
+  useEffect(() => {
+    if (previousSelectedRef.current && !selected) setCollapsed(true)
+    previousSelectedRef.current = selected
+  }, [selected])
   useEffect(() => {
     if (selected && !collapsed && !annotation.body) bodyRef.current?.focus()
   }, [selected, collapsed, annotation.body])
