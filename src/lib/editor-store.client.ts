@@ -53,6 +53,7 @@ interface EditorState {
   zoom: number
   rotation: number
   sidebarOpen: boolean
+  chatOpen: boolean
   searchOpen: boolean
   toast: string | null
   history: Array<HistoryEntry>
@@ -74,6 +75,7 @@ interface EditorState {
   updateAnnotationDrag: (dx: number, dy: number) => void
   finishAnnotationDrag: () => Promise<void>
   setSidebarOpen: (open: boolean) => void
+  setChatOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
   notify: (message: string) => void
   commit: (
@@ -140,11 +142,12 @@ async function persistChange(before: Array<Annotation>, after: Array<Annotation>
 let documentOpenRequest = 0
 
 const sidebarOpenStorageKey = 'mimir:sidebar-open'
+const chatOpenStorageKey = 'mimir:chat-open'
 
-function shouldOpenSidebarByDefault() {
+function shouldOpenPanelByDefault(storageKey: string) {
   if (typeof window === 'undefined') return true
   try {
-    const saved = window.localStorage.getItem(sidebarOpenStorageKey)
+    const saved = window.localStorage.getItem(storageKey)
     if (saved === 'true') return true
     if (saved === 'false') return false
   } catch {
@@ -153,9 +156,9 @@ function shouldOpenSidebarByDefault() {
   return !window.matchMedia?.('(max-width: 820px)').matches
 }
 
-function persistSidebarOpen(sidebarOpen: boolean) {
+function persistPanelOpen(storageKey: string, open: boolean) {
   try {
-    window.localStorage.setItem(sidebarOpenStorageKey, String(sidebarOpen))
+    window.localStorage.setItem(storageKey, String(open))
   } catch {
     // The sidebar still works for this session when storage is unavailable.
   }
@@ -187,7 +190,8 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   currentPage: 1,
   zoom: 1,
   rotation: 0,
-  sidebarOpen: shouldOpenSidebarByDefault(),
+  sidebarOpen: shouldOpenPanelByDefault(sidebarOpenStorageKey),
+  chatOpen: shouldOpenPanelByDefault(chatOpenStorageKey),
   searchOpen: false,
   toast: null,
   history: [],
@@ -360,7 +364,11 @@ export const editorStore = createStore<EditorState>((set, get) => ({
   },
   setSidebarOpen: (sidebarOpen) => {
     set({ sidebarOpen })
-    persistSidebarOpen(sidebarOpen)
+    persistPanelOpen(sidebarOpenStorageKey, sidebarOpen)
+  },
+  setChatOpen: (chatOpen) => {
+    set({ chatOpen })
+    persistPanelOpen(chatOpenStorageKey, chatOpen)
   },
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   notify: (toast) => {
