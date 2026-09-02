@@ -215,7 +215,7 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
         width,
         height,
       }
-      await createAnnotations([{ ...base, kind: 'note', point: { x: bounds.x, y: bounds.y }, bounds, body: '', resolved: false }], 'Add note')
+      await createAnnotations([{ ...base, kind: 'note', point: { x: bounds.x, y: bounds.y }, bounds, anchorRight: false, body: '', resolved: false }], 'Add note')
     } else if (tool === 'text') {
       const width = Math.min(0.3, 1)
       const height = Math.min(0.027, 1)

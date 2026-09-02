@@ -78,8 +78,10 @@ export const textAnnotationSchema = base.extend({
 export const noteAnnotationSchema = base.extend({
   kind: z.literal('note'),
   point: pointSchema,
-  /** Persisted after creation/resizing; point remains the note's top-left anchor. */
+  /** Persisted after placement; point remains the collapsed pin's top-left anchor. */
   bounds: rectSchema.optional(),
+  /** Whether the expanded note is anchored to the pin's right edge. */
+  anchorRight: z.boolean().optional(),
   body: z.string().max(annotationBodyLimits.note),
   resolved: z.boolean().default(false),
 })
