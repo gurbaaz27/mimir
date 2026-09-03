@@ -17,7 +17,7 @@ import {
   readStickyNoteCollapsed,
 } from '#/lib/sticky-note-collapsed.client'
 import { cn } from '#/lib/utils'
-import { AnnotationMarkdown, useMarkdownShortcuts } from './annotation-markdown'
+import { AnnotationMarkdown, sourceCaretFromPoint, useMarkdownShortcuts } from './annotation-markdown'
 import { ResizeHandles } from './annotation-resize-handles'
 
 type NoteAnnotation = Extract<Annotation, { kind: 'note' }>
@@ -96,6 +96,7 @@ function StickyNote({
   const resizeRef = useRef<{ pointerId: number; handle: ResizeHandle; bounds: NormalizedRect; moved: boolean } | null>(null)
   const resizeBoundsRef = useRef<NormalizedRect | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const pendingCaretRef = useRef<number | null>(null)
   const previousSelectedRef = useRef(selected)
   const previousResolvedRef = useRef(annotation.resolved)
 
@@ -124,11 +125,15 @@ function StickyNote({
   useEffect(() => {
     if (collapsed) setEditing(false)
   }, [collapsed])
+  // Editing opens where the body was clicked; anywhere else — a new note, the
+  // keyboard — it opens at the end.
   useLayoutEffect(() => {
     const input = bodyRef.current
     if (!editing || !input) return
+    const caret = pendingCaretRef.current ?? input.value.length
+    pendingCaretRef.current = null
     input.focus()
-    input.setSelectionRange(input.value.length, input.value.length)
+    input.setSelectionRange(caret, caret)
   }, [editing])
 
   const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
@@ -417,6 +422,9 @@ function StickyNote({
             className={cn(noteBodyClass, 'cursor-text overflow-auto')}
             tabIndex={0}
             aria-label="Note body"
+            onPointerDown={(event) => {
+              pendingCaretRef.current = sourceCaretFromPoint(event.currentTarget, event.clientX, event.clientY, body)
+            }}
             onFocus={() => {
               select()
               setEditing(true)
@@ -462,6 +470,7 @@ function TextBox({
   const [resizeBounds, setResizeBounds] = useState<NormalizedRect | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
+  const pendingCaretRef = useRef<number | null>(null)
   const dragRef = useRef<{ x: number; y: number; moved: boolean; group: boolean } | null>(null)
   const dragBoundsRef = useRef<NormalizedRect | null>(null)
   const resizeRef = useRef<{ pointerId: number; handle: ResizeHandle; bounds: NormalizedRect; moved: boolean } | null>(null)
@@ -480,8 +489,10 @@ function TextBox({
   useLayoutEffect(() => {
     const input = inputRef.current
     if (!editing || !input) return
+    const caret = pendingCaretRef.current ?? input.value.length
+    pendingCaretRef.current = null
     input.focus()
-    input.setSelectionRange(input.value.length, input.value.length)
+    input.setSelectionRange(caret, caret)
   }, [editing])
 
   const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
@@ -697,6 +708,9 @@ function TextBox({
           style={bodyStyle}
           tabIndex={0}
           aria-label="Text box body"
+          onPointerDown={(event) => {
+            pendingCaretRef.current = sourceCaretFromPoint(event.currentTarget, event.clientX, event.clientY, body)
+          }}
           onFocus={() => {
             setSelected(annotation.id)
             setEditing(true)

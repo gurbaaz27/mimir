@@ -73,6 +73,59 @@ function AnnotationMarkdownBody({ content, className }: { content: string; class
 export const AnnotationMarkdown = memo(AnnotationMarkdownBody)
 
 /**
+ * `caretPositionFromPoint` is the standard; WebKit and older Blink only ship
+ * the range form, and jsdom neither.
+ */
+interface CaretDocument {
+  caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+  caretRangeFromPoint?: (x: number, y: number) => Range | null
+}
+
+function renderedOffsetFromPoint(container: HTMLElement, clientX: number, clientY: number) {
+  const caretDocument = document as unknown as CaretDocument
+  const position = caretDocument.caretPositionFromPoint?.(clientX, clientY)
+  const caret = position
+    ? { node: position.offsetNode, offset: position.offset }
+    : (() => {
+        const range = caretDocument.caretRangeFromPoint?.(clientX, clientY)
+        return range ? { node: range.startContainer, offset: range.startOffset } : null
+      })()
+  if (!caret || !container.contains(caret.node)) return null
+
+  const range = document.createRange()
+  range.selectNodeContents(container)
+  range.setEnd(caret.node, caret.offset)
+  return range.toString().length
+}
+
+/**
+ * Where a click on the formatted body lands in the markdown source, so that
+ * clicking into the middle of a note puts the caret there rather than at the end.
+ *
+ * Every visible character is in the source too, with the markers interleaved
+ * around it, so walking the two together maps one offset onto the other without
+ * anyone having to keep a position map. Returns null where the browser cannot
+ * resolve the point, leaving the caller to fall back to the end of the body.
+ */
+export function sourceCaretFromPoint(
+  container: HTMLElement,
+  clientX: number,
+  clientY: number,
+  source: string,
+) {
+  const rendered = renderedOffsetFromPoint(container, clientX, clientY)
+  if (rendered === null) return null
+  const text = container.textContent ?? ''
+  let sourceIndex = 0
+  let textIndex = 0
+  while (textIndex < rendered && sourceIndex < source.length) {
+    if (source[sourceIndex] === text[textIndex]) textIndex += 1
+    sourceIndex += 1
+  }
+  return sourceIndex
+}
+
+/**
  * Markdown editing shortcuts for a body textarea: ⌘B/⌘I/⌘U/⌘E, ⌘⇧X, and
  * ⌘⇧8/⌘⇧7 for lists, plus Enter carrying a list marker onto the next line.
  *

@@ -250,14 +250,24 @@ export function markdownToPlainText(markdown: string) {
 }
 
 function stripInlineMarkers(text: string) {
-  return text
+  let result = text
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/`([^`\n]+)`/g, '$1')
-    .replace(/(\*\*|__|~~|\+\+)([^\n]+?)\1/g, '$2')
-    // A lone `*` or `_` only emphasises away from word characters, so
-    // `snake_case_name` keeps its underscores.
-    .replace(/(^|[^\w*_])([*_])([^*_\n]+)\2(?!\w)/g, '$1$3')
+
+  // One pass only reaches the outermost pair it meets, and a replacement is
+  // never rescanned — so the nesting the renderer understands, `++**bold**++`,
+  // needs the pass repeated until there is nothing left to take off.
+  for (let pass = 0; pass < 6; pass += 1) {
+    const next = result
+      .replace(/(\*\*|__|~~|\+\+)([^\n]+?)\1/g, '$2')
+      // A lone `*` or `_` only emphasises away from word characters, so
+      // `snake_case_name` keeps its underscores.
+      .replace(/(^|[^\w*_])([*_])([^*_\n]+)\2(?!\w)/g, '$1$3')
+    if (next === result) break
+    result = next
+  }
+  return result
 }
 
 /* ------------------------------------------------------------------ */

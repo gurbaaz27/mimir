@@ -158,6 +158,13 @@ describe('plain text', () => {
       .toBe('Heading\n\n- one\n- two\n\nquoted')
   })
 
+  it('takes the markers off nested marks too', () => {
+    expect(markdownToPlainText('++**bold**++')).toBe('bold')
+    expect(markdownToPlainText('**++bold++**')).toBe('bold')
+    expect(markdownToPlainText('~~**gone**~~')).toBe('gone')
+    expect(markdownToPlainText('***both***')).toBe('both')
+  })
+
   it('keeps link text and drops the target', () => {
     expect(markdownToPlainText('see [the table](https://example.com/x)')).toBe('see the table')
   })
