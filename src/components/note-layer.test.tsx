@@ -89,35 +89,10 @@ describe('note layer', () => {
 
     fireEvent.click(preview)
 
-    const input = screen.getByRole('textbox') as HTMLTextAreaElement
-    expect(input.value).toBe('**Check** this')
-  })
-
-  it('wraps the selected text when a note body is bolded with the keyboard', () => {
-    render(
-      <NoteLayer pageNumber={1} annotations={[{ ...note, body: 'note text' }]} pageWidth={612} pageHeight={792} zoom={1} />,
-    )
-
-    fireEvent.click(screen.getByLabelText('Note body'))
-    const input = screen.getByRole('textbox') as HTMLTextAreaElement
-    input.setSelectionRange(0, 4)
-    fireEvent.keyDown(input, { key: 'b', metaKey: true })
-
-    expect(input.value).toBe('**note** text')
-    expect([input.selectionStart, input.selectionEnd]).toEqual([2, 6])
-  })
-
-  it('carries a list marker onto the next line', () => {
-    render(
-      <NoteLayer pageNumber={1} annotations={[{ ...note, body: '- first' }]} pageWidth={612} pageHeight={792} zoom={1} />,
-    )
-
-    fireEvent.click(screen.getByLabelText('Note body'))
-    const input = screen.getByRole('textbox') as HTMLTextAreaElement
-    input.setSelectionRange(7, 7)
-    fireEvent.keyDown(input, { key: 'Enter' })
-
-    expect(input.value).toBe('- first\n- ')
+    // The editor holds the markdown source itself, styled rather than stripped.
+    const editor = screen.getByRole('textbox')
+    expect(editor.textContent).toBe('**Check** this')
+    expect(editor.querySelector('.font-\\[680\\]')?.textContent).toBe('Check')
   })
 
   it('opens a note near the right edge toward the page instead of overflowing', () => {

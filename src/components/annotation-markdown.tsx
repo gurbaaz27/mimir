@@ -1,12 +1,7 @@
-import { memo, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
+import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import {
-  applyMarkdownCommand,
-  continueList,
-  markdownCommandForEvent,
-  remarkUnderline,
-} from '#/lib/markdown'
+import { remarkUnderline } from '#/lib/markdown'
 import { cn } from '#/lib/utils'
 
 /**
@@ -118,42 +113,4 @@ export function sourceCaretFromPoint(
 ) {
   if (container.textContent !== source) return null
   return renderedOffsetFromPoint(container, clientX, clientY)
-}
-
-/**
- * Markdown editing shortcuts for a body textarea: ⌘B/⌘I/⌘U/⌘E, ⌘⇧X, and
- * ⌘⇧8/⌘⇧7 for lists, plus Enter carrying a list marker onto the next line.
- *
- * The caret has to be restored after React has written the new value back into
- * the textarea, so the range is parked in a ref and applied in a layout effect
- * rather than set here — setting it now would be overwritten by the re-render.
- */
-export function useMarkdownShortcuts(
-  ref: RefObject<HTMLTextAreaElement | null>,
-  body: string,
-  setBody: (value: string) => void,
-) {
-  const pendingSelection = useRef<[number, number] | null>(null)
-
-  useLayoutEffect(() => {
-    const selection = pendingSelection.current
-    if (!selection) return
-    pendingSelection.current = null
-    ref.current?.setSelectionRange(selection[0], selection[1])
-  }, [body, ref])
-
-  return (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    const element = event.currentTarget
-    const state = { value: element.value, start: element.selectionStart, end: element.selectionEnd }
-    const command = markdownCommandForEvent(event)
-    const next = command
-      ? applyMarkdownCommand(state, command)
-      : event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey
-        ? continueList(state)
-        : null
-    if (!next) return
-    event.preventDefault()
-    pendingSelection.current = [next.start, next.end]
-    setBody(next.value)
-  }
 }

@@ -17,7 +17,8 @@ import {
   readStickyNoteCollapsed,
 } from '#/lib/sticky-note-collapsed.client'
 import { cn } from '#/lib/utils'
-import { AnnotationMarkdown, sourceCaretFromPoint, useMarkdownShortcuts } from './annotation-markdown'
+import { AnnotationMarkdown, sourceCaretFromPoint } from './annotation-markdown'
+import { focusMarkdownEditor, MarkdownEditor } from './markdown-editor'
 import { ResizeHandles } from './annotation-resize-handles'
 
 type NoteAnnotation = Extract<Annotation, { kind: 'note' }>
@@ -95,7 +96,7 @@ function StickyNote({
   } | null>(null)
   const resizeRef = useRef<{ pointerId: number; handle: ResizeHandle; bounds: NormalizedRect; moved: boolean } | null>(null)
   const resizeBoundsRef = useRef<NormalizedRect | null>(null)
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const pendingCaretRef = useRef<number | null>(null)
   const previousSelectedRef = useRef(selected)
   const previousResolvedRef = useRef(annotation.resolved)
@@ -130,10 +131,9 @@ function StickyNote({
   useLayoutEffect(() => {
     const input = bodyRef.current
     if (!editing || !input) return
-    const caret = pendingCaretRef.current ?? input.value.length
+    const caret = pendingCaretRef.current ?? body.length
     pendingCaretRef.current = null
-    input.focus()
-    input.setSelectionRange(caret, caret)
+    focusMarkdownEditor(input, caret)
   }, [editing])
 
   const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
@@ -171,8 +171,6 @@ function StickyNote({
   const commitBody = () => {
     if (body !== annotation.body) void update(annotation.id, { body } as Partial<Annotation>)
   }
-
-  const handleBodyKeyDown = useMarkdownShortcuts(bodyRef, body, setBody)
 
   const handleDragStart = (event: PointerEvent<HTMLElement>) => {
     event.stopPropagation()
@@ -403,15 +401,14 @@ function StickyNote({
           </button>
         </div>
         {editing ? (
-          <textarea
+          <MarkdownEditor
             ref={bodyRef}
-            className={cn(noteBodyClass, 'resize-none border-0 outline-none placeholder:text-[oklch(.35_.02_75/.5)]')}
+            className={cn(noteBodyClass, 'overflow-auto')}
             value={body}
             placeholder="Add your thought…"
-            spellCheck={false}
+            ariaLabel="Note body"
             onFocus={select}
-            onKeyDown={handleBodyKeyDown}
-            onChange={(event) => setBody(event.target.value)}
+            onChange={setBody}
             onBlur={() => {
               setEditing(false)
               commitBody()
@@ -468,7 +465,7 @@ function TextBox({
   const [contentHeight, setContentHeight] = useState<number | null>(null)
   const [dragBounds, setDragBounds] = useState<NormalizedRect | null>(null)
   const [resizeBounds, setResizeBounds] = useState<NormalizedRect | null>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const pendingCaretRef = useRef<number | null>(null)
   const dragRef = useRef<{ x: number; y: number; moved: boolean; group: boolean } | null>(null)
@@ -489,10 +486,9 @@ function TextBox({
   useLayoutEffect(() => {
     const input = inputRef.current
     if (!editing || !input) return
-    const caret = pendingCaretRef.current ?? input.value.length
+    const caret = pendingCaretRef.current ?? body.length
     pendingCaretRef.current = null
-    input.focus()
-    input.setSelectionRange(caret, caret)
+    focusMarkdownEditor(input, caret)
   }, [editing])
 
   const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
@@ -509,7 +505,7 @@ function TextBox({
   useLayoutEffect(() => {
     if (!pageHeight || annotation.autoHeight === false) return
 
-    // Whichever view is mounted reports the height the box needs. The textarea
+    // Whichever view is mounted reports the height the box needs. The editor
     // has to be zeroed first so it reports its natural height rather than the
     // current box height — that covers wrapped lines as well as explicit
     // newlines — while the formatted body already sits in an auto-height wrapper.
@@ -648,7 +644,6 @@ function TextBox({
     void update(annotation.id, { body, ...(nextBounds ? { bounds: nextBounds } : {}) } as Partial<Annotation>)
   }
 
-  const handleKeyDown = useMarkdownShortcuts(inputRef, body, setBody)
   const bodyStyle = {
     color: annotation.style.color,
     opacity: annotation.style.opacity,
@@ -679,20 +674,19 @@ function TextBox({
         />
       )}
       {editing ? (
-        <textarea
+        <MarkdownEditor
           ref={inputRef}
           className={cn(
-            'h-full min-h-0 w-full resize-none overflow-hidden rounded border border-transparent bg-transparent px-[3px] py-0.5 font-sans leading-[1.28] outline-none [overflow-wrap:anywhere]',
+            'h-full min-h-0 w-full overflow-hidden rounded border border-transparent bg-transparent px-[3px] py-0.5 font-sans leading-[1.28] [overflow-wrap:anywhere]',
             selected && 'bg-[oklch(1_0_0/.6)]',
             (annotation.autoHeight === false || resizeBounds) && 'overflow-auto',
           )}
           value={body}
           placeholder="Type on the page…"
-          spellCheck={false}
+          ariaLabel="Text box body"
           style={bodyStyle}
           onFocus={() => setSelected(annotation.id)}
-          onKeyDown={handleKeyDown}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={setBody}
           onBlur={() => {
             setEditing(false)
             commit()
