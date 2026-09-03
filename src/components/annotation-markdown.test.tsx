@@ -43,28 +43,48 @@ describe('annotation markdown', () => {
     expect(container.textContent).toContain('done')
   })
 
-  it('maps a rendered offset back onto the markdown source', () => {
-    const { container } = render(<AnnotationMarkdown content="a **bold** tail" />)
+  /**
+   * jsdom resolves no caret from a point, so the mapping is driven through a
+   * stubbed one that lands where `pick` says.
+   */
+  function caretAt(source: string, pick: (body: HTMLElement) => { node: Node; offset: number }) {
+    const { container } = render(<AnnotationMarkdown content={source} />)
     const body = container.firstElementChild as HTMLElement
-    // jsdom resolves no caret from a point, so drive the mapping through a
-    // stubbed one and check the marker characters are skipped.
     const original = Object.getOwnPropertyDescriptor(document, 'caretRangeFromPoint')
     Object.defineProperty(document, 'caretRangeFromPoint', {
       configurable: true,
       value: () => {
+        const { node, offset } = pick(body)
         const range = document.createRange()
-        const bold = body.querySelector('strong')?.firstChild
-        if (bold) range.setStart(bold, 2)
+        range.setStart(node, offset)
         return range
       },
     })
+    try {
+      return sourceCaretFromPoint(body, 0, 0, source)
+    } finally {
+      if (original) Object.defineProperty(document, 'caretRangeFromPoint', original)
+      else Reflect.deleteProperty(document, 'caretRangeFromPoint')
+    }
+  }
 
-    // Two characters into the rendered word "bold", which is four characters
-    // into the source once the opening `**` is counted.
-    expect(sourceCaretFromPoint(body, 0, 0, 'a **bold** tail')).toBe(6)
+  it('maps a rendered offset back onto the markdown source', () => {
+    // Two characters into the rendered word "bold", which is six characters
+    // into the source once `a ` and the opening `**` are counted.
+    const caret = caretAt('a **bold** tail', (body) => ({
+      node: body.querySelector('strong')?.firstChild as Node,
+      offset: 2,
+    }))
+    expect(caret).toBe(6)
+  })
 
-    if (original) Object.defineProperty(document, 'caretRangeFromPoint', original)
-    else Reflect.deleteProperty(document, 'caretRangeFromPoint')
+  it('steps over a character reference as one rendered character', () => {
+    // The caret sits after the rendered `©`, which is `&copy;` in the source.
+    const caret = caretAt('a &copy; b', (body) => ({
+      node: body.querySelector('p')?.firstChild as Node,
+      offset: 4,
+    }))
+    expect(caret).toBe(9)
   })
 
   it('falls back to no position when the browser resolves no caret', () => {
