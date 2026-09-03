@@ -165,6 +165,10 @@ describe('plain text', () => {
     expect(markdownToPlainText('***both***')).toBe('both')
   })
 
+  it('keeps going however deep the nesting is', () => {
+    expect(markdownToPlainText('++~~**__++~~**deep**~~++__**~~++')).toBe('deep')
+  })
+
   it('keeps link text and drops the target', () => {
     expect(markdownToPlainText('see [the table](https://example.com/x)')).toBe('see the table')
   })
