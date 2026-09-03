@@ -3,12 +3,15 @@ import type { Annotation, Point } from '#/lib/annotations'
 import { annotationBounds, annotationColors, createAnnotationBase } from '#/lib/annotations'
 import {
   constrainDrawingEnd,
-  defaultNoteSizePx,
+  defaultNoteBounds,
+  expandedNotePlacement,
   mergeTextQuads,
+  notePinBounds,
   resizeRectFromHandle,
   type ResizeHandle,
 } from '#/lib/annotation-geometry'
 import { useEditorStore } from '#/lib/editor-store.client'
+import { noteVisibleBounds } from '#/lib/sticky-note-collapsed.client'
 import { cn } from '#/lib/utils'
 import { EndpointHandles, ResizeHandles } from './annotation-resize-handles'
 
@@ -207,15 +210,20 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
     const style = { color, opacity: 0.95, strokeWidth: 2, fontSize: 12 }
     const base = createAnnotationBase(activeDocument.id, pageNumber, 'human', style)
     if (tool === 'note') {
-      const width = Math.min(1, defaultNoteSizePx.width * zoom / pageWidth)
-      const height = Math.min(1, defaultNoteSizePx.height * zoom / pageHeight)
-      const bounds = {
-        x: Math.min(point.x, 1 - width),
-        y: Math.min(point.y, 1 - height),
-        width,
-        height,
+      // The pin belongs where it was clicked, so only the pin is held on the
+      // page; the panel finds the side of it that fits.
+      const pin = notePinBounds(point, pageWidth, pageHeight, zoom)
+      const anchor = {
+        x: Math.min(point.x, Math.max(0, 1 - pin.width)),
+        y: Math.min(point.y, Math.max(0, 1 - pin.height)),
       }
-      await createAnnotations([{ ...base, kind: 'note', point: { x: bounds.x, y: bounds.y }, bounds, anchorRight: false, body: '', resolved: false }], 'Add note')
+      const size = defaultNoteBounds(anchor, pageWidth, pageHeight, zoom)
+      const placement = expandedNotePlacement(anchor, size, pageWidth, pageHeight, zoom)
+      const bounds = { ...size, x: placement.left / pageWidth, y: placement.top / pageHeight }
+      await createAnnotations(
+        [{ ...base, kind: 'note', point: anchor, bounds, anchorRight: placement.alignRight, body: '', resolved: false }],
+        'Add note',
+      )
     } else if (tool === 'text') {
       const width = Math.min(0.3, 1)
       const height = Math.min(0.027, 1)
@@ -229,20 +237,6 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
         }],
         'Add text',
       )
-    }
-  }
-
-  const clampDragDelta = (ids: Array<string>, dx: number, dy: number) => {
-    const selected = pageAnnotations.filter((annotation) => ids.includes(annotation.id))
-    const bounds = selected.map(annotationBounds).filter((value): value is NonNullable<typeof value> => value !== null)
-    if (!bounds.length) return { dx, dy }
-    const minX = Math.min(...bounds.map((bound) => bound.x))
-    const minY = Math.min(...bounds.map((bound) => bound.y))
-    const maxX = Math.max(...bounds.map((bound) => bound.x + bound.width))
-    const maxY = Math.max(...bounds.map((bound) => bound.y + bound.height))
-    return {
-      dx: Math.max(-minX, Math.min(1 - maxX, dx)),
-      dy: Math.max(-minY, Math.min(1 - maxY, dy)),
     }
   }
 
@@ -265,9 +259,8 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
     const svg = svgRef.current
     if (!drag || drag.pointerId !== event.pointerId || !svg) return
     const rect = svg.getBoundingClientRect()
-    const next = clampDragDelta(drag.ids, (event.clientX - drag.startX) / rect.width, (event.clientY - drag.startY) / rect.height)
     event.preventDefault()
-    updateAnnotationDrag(next.dx, next.dy)
+    updateAnnotationDrag((event.clientX - drag.startX) / rect.width, (event.clientY - drag.startY) / rect.height)
   }
 
   const handleAnnotationPointerUp = (event: PointerEvent<SVGGElement>) => {
@@ -394,7 +387,11 @@ export function AnnotationOverlay({ pageNumber, annotations, pageWidth, pageHeig
       }
       const selected = pageAnnotations
         .filter((annotation) => {
-          const bounds = annotationBounds(annotation)
+          // A collapsed note is a pin, not the panel it would open to, so a box
+          // drawn around the pin has to catch it.
+          const bounds = annotation.kind === 'note'
+            ? noteVisibleBounds(annotation, pageWidth, pageHeight, zoom)
+            : annotationBounds(annotation)
           return bounds && bounds.x >= selection.x && bounds.y >= selection.y &&
             bounds.x + bounds.width <= selection.x + selection.width &&
             bounds.y + bounds.height <= selection.y + selection.height

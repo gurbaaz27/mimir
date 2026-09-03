@@ -84,4 +84,35 @@ describe('note layer', () => {
     expect(Number.parseFloat(noteElement.style.left)).toBeCloseTo(394.8)
     expect(Number.parseFloat(noteElement.style.left) + Number.parseFloat(noteElement.style.width)).toBeCloseTo(572.8)
   })
+
+  it('honours the stored side for a note that mounts already open', () => {
+    // The shape the note tool writes at the right margin: pin where it was
+    // clicked, panel already placed to its left.
+    const placed: Annotation = {
+      ...note,
+      point: { x: 0.9, y: 0.2 },
+      bounds: { x: 394.8 / 612, y: 0.2, width: 178 / 612, height: 118 / 792 },
+      anchorRight: true,
+    }
+
+    render(<NoteLayer pageNumber={1} annotations={[placed]} pageWidth={612} pageHeight={792} zoom={1} />)
+
+    const noteElement = document.querySelector('[data-annotation-id="note-1"]') as HTMLElement
+    expect(noteElement).toBeTruthy()
+    expect(Number.parseFloat(noteElement.style.left)).toBeCloseTo(394.8)
+    expect(Number.parseFloat(noteElement.style.left) + Number.parseFloat(noteElement.style.width)).toBeCloseTo(572.8)
+  })
+
+  it('keeps a legacy note flush with its pin when the panel still fits', () => {
+    const legacy: Annotation = {
+      ...note,
+      point: { x: 0.2, y: 0.2 },
+      bounds: { x: 0.2, y: 0.2, width: 178 / 612, height: 118 / 792 },
+    }
+
+    render(<NoteLayer pageNumber={1} annotations={[legacy]} pageWidth={612} pageHeight={792} zoom={1} />)
+
+    const noteElement = document.querySelector('[data-annotation-id="note-1"]') as HTMLElement
+    expect(Number.parseFloat(noteElement.style.left)).toBeCloseTo(0.2 * 612)
+  })
 })

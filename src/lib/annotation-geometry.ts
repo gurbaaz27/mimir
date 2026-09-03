@@ -230,3 +230,70 @@ export function constrainDrawingEnd(
     y: start.y + directionY * size / pageHeight,
   }
 }
+
+/**
+ * Sticky pin edge in CSS pixels at 100% zoom. The pin is what a collapsed note
+ * shows and what a reader aims at, so it — not the expanded panel — is the
+ * note's footprint on the page.
+ */
+export const notePinSizePx = 22
+
+/** The collapsed pin's rectangle, in normalized page coordinates. */
+export function notePinBounds(anchor: Point, pageWidth: number, pageHeight: number, zoom: number): NormalizedRect {
+  return {
+    x: anchor.x,
+    y: anchor.y,
+    width: (notePinSizePx * zoom) / pageWidth,
+    height: (notePinSizePx * zoom) / pageHeight,
+  }
+}
+
+/** The panel size a note opens to when it has no stored bounds of its own. */
+export function defaultNoteBounds(anchor: Point, pageWidth: number, pageHeight: number, zoom: number): NormalizedRect {
+  return {
+    x: anchor.x,
+    y: anchor.y,
+    width: Math.min(1, defaultNoteSizePx.width * zoom / pageWidth),
+    height: Math.min(1, defaultNoteSizePx.height * zoom / pageHeight),
+  }
+}
+
+/**
+ * Where a note's panel opens relative to its pin.
+ *
+ * The pin stays where the reader put it, so a note near the right margin opens
+ * leftward — its right edge anchored to the pin's — instead of dragging the
+ * pin inward to make the panel fit. Pass `anchorRight` to hold a side that has
+ * already been chosen; omit it to pick the side that fits.
+ */
+export function expandedNotePlacement(
+  anchor: Point,
+  bounds: NormalizedRect,
+  pageWidth: number,
+  pageHeight: number,
+  zoom: number,
+  anchorRight?: boolean,
+) {
+  const width = bounds.width * pageWidth
+  const height = bounds.height * pageHeight
+  const pinLeft = anchor.x * pageWidth
+  const pinRight = pinLeft + notePinSizePx * zoom
+  const alignRight = anchorRight ?? noteOpensLeftward(anchor.x, (notePinSizePx * zoom) / pageWidth, bounds.width)
+
+  return {
+    alignRight,
+    left: clamp(alignRight ? pinRight - width : pinLeft, 0, Math.max(0, pageWidth - width)),
+    top: clamp(anchor.y * pageHeight, 0, Math.max(0, pageHeight - height)),
+  }
+}
+
+/**
+ * Whether a note's panel opens leftward from its pin, in normalized page units.
+ *
+ * The same rule `expandedNotePlacement` applies, without page pixels: a group
+ * move commits in normalized coordinates and still has to land on the side a
+ * single drag would have picked.
+ */
+export function noteOpensLeftward(anchorX: number, pinWidth: number, panelWidth: number) {
+  return anchorX + panelWidth > 1 && anchorX + pinWidth >= panelWidth
+}

@@ -33,6 +33,52 @@ describe('shared editor command path', () => {
     })
   })
 
+  it('moves a collapsed note by its pin and re-picks the side its panel opens on', async () => {
+    const panel = { width: 178 / 612, height: 118 / 792 }
+    const pin = { width: 22 / 612, height: 22 / 792 }
+    const annotation = {
+      ...note(),
+      point: { x: 0.4, y: 0.3 },
+      bounds: { x: 0.4, y: 0.3, ...panel },
+      anchorRight: false,
+    } as Annotation
+    await editorStore.getState().createAnnotations([annotation], 'Add note')
+
+    const overrides = {
+      [annotation.id]: {
+        visibleBounds: { x: 0.4, y: 0.3, ...pin },
+        expandedBounds: { x: 0.4, y: 0.3, ...panel },
+      },
+    }
+    // Far enough right that the panel no longer fits beside the pin.
+    await editorStore.getState().moveAnnotations([annotation.id], 0.7, 0, overrides)
+
+    const moved = editorStore.getState().annotations[0]
+    if (moved?.kind !== 'note') throw new Error('note was not stored')
+    // The pin clamps on itself, so it reaches the margin instead of stopping a
+    // panel-width short of it.
+    expect(moved.point.x).toBeCloseTo(1 - pin.width)
+    expect(moved.anchorRight).toBe(true)
+    expect(moved.bounds && moved.bounds.x + moved.bounds.width).toBeCloseTo(1)
+  })
+
+  it('clamps a collapsed note group move on the pin, not the panel', async () => {
+    const annotation = {
+      ...note(),
+      point: { x: 0.4, y: 0.3 },
+      bounds: { x: 0.4, y: 0.3, width: 178 / 612, height: 118 / 792 },
+    } as Annotation
+    await editorStore.getState().createAnnotations([annotation], 'Add note')
+
+    // Without an override the stored panel is the footprint, so the same drag
+    // stops short — this is what a mixed selection still does.
+    await editorStore.getState().moveAnnotations([annotation.id], 0.7, 0)
+
+    const moved = editorStore.getState().annotations[0]
+    if (moved?.kind !== 'note') throw new Error('note was not stored')
+    expect(moved.point.x).toBeCloseTo(1 - 178 / 612)
+  })
+
   it('persists, undoes, and redoes the same annotation command', async () => {
     const annotation = note()
     await editorStore.getState().createAnnotations([annotation], 'Add note')

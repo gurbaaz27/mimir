@@ -15,6 +15,7 @@ import {
   type MarkupType,
   type ShapeType,
 } from './annotations'
+import { noteOpensLeftward } from './annotation-geometry'
 
 export type EditorTool =
   | 'select'
@@ -31,10 +32,14 @@ interface HistoryEntry {
   after: Array<Annotation>
 }
 
+/**
+ * What a note actually occupies during a move, when that differs from its
+ * stored bounds. A collapsed note is a pin, so the pin is what clamps against
+ * the page edge; the panel it would open to is carried along and re-placed.
+ */
 export interface AnnotationMoveOverride {
   visibleBounds: NonNullable<ReturnType<typeof annotationBounds>>
   expandedBounds: NonNullable<ReturnType<typeof annotationBounds>>
-  anchorRight: boolean
 }
 
 interface AnnotationDrag {
@@ -220,11 +225,13 @@ function translateAnnotationForMove(
   if (!override || moved.kind !== 'note') return moved
 
   const bounds = moved.bounds ?? override.expandedBounds
-  const x = override.anchorRight
-    ? moved.point.x + override.visibleBounds.width - bounds.width
-    : moved.point.x
+  // A pin dropped somewhere new re-picks the side its panel opens on, so a
+  // group move lands where dragging the note by itself would have put it.
+  const anchorRight = noteOpensLeftward(moved.point.x, override.visibleBounds.width, bounds.width)
+  const x = anchorRight ? moved.point.x + override.visibleBounds.width - bounds.width : moved.point.x
   return {
     ...moved,
+    anchorRight,
     bounds: {
       ...bounds,
       x: Math.max(0, Math.min(1 - bounds.width, x)),
