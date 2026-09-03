@@ -55,11 +55,11 @@ describe('note layer', () => {
       </div>,
     )
 
-    expect(screen.getByRole('textbox')).toBeTruthy()
+    expect(document.querySelector('[data-annotation-id="note-1"]')).toBeTruthy()
 
     fireEvent.pointerDown(screen.getByTestId('outside'))
 
-    await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+    await waitFor(() => expect(document.querySelector('[data-annotation-id="note-1"]')).toBeNull())
     expect(window.localStorage.getItem('mimir:sticky-note-collapsed:note-1')).toBe('true')
   })
 
@@ -68,7 +68,56 @@ describe('note layer', () => {
 
     render(<NoteLayer pageNumber={1} annotations={[note]} pageWidth={612} pageHeight={792} zoom={1} />)
 
+    expect(document.querySelector('[data-annotation-id="note-1"]')).toBeNull()
+    expect(screen.getByRole('button', { name: /open note/i })).toBeTruthy()
+  })
+
+  it('shows a note body as formatted markdown until it is clicked into', () => {
+    render(
+      <NoteLayer
+        pageNumber={1}
+        annotations={[{ ...note, body: '**Check** this' }]}
+        pageWidth={612}
+        pageHeight={792}
+        zoom={1}
+      />,
+    )
+
+    const preview = screen.getByLabelText('Note body')
+    expect(preview.querySelector('strong')?.textContent).toBe('Check')
     expect(screen.queryByRole('textbox')).toBeNull()
+
+    fireEvent.click(preview)
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    expect(input.value).toBe('**Check** this')
+  })
+
+  it('wraps the selected text when a note body is bolded with the keyboard', () => {
+    render(
+      <NoteLayer pageNumber={1} annotations={[{ ...note, body: 'note text' }]} pageWidth={612} pageHeight={792} zoom={1} />,
+    )
+
+    fireEvent.click(screen.getByLabelText('Note body'))
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    input.setSelectionRange(0, 4)
+    fireEvent.keyDown(input, { key: 'b', metaKey: true })
+
+    expect(input.value).toBe('**note** text')
+    expect([input.selectionStart, input.selectionEnd]).toEqual([2, 6])
+  })
+
+  it('carries a list marker onto the next line', () => {
+    render(
+      <NoteLayer pageNumber={1} annotations={[{ ...note, body: '- first' }]} pageWidth={612} pageHeight={792} zoom={1} />,
+    )
+
+    fireEvent.click(screen.getByLabelText('Note body'))
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    input.setSelectionRange(7, 7)
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(input.value).toBe('- first\n- ')
   })
 
   it('opens a note near the right edge toward the page instead of overflowing', () => {

@@ -1,0 +1,111 @@
+import { memo, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import {
+  applyMarkdownCommand,
+  continueList,
+  markdownCommandForEvent,
+  remarkUnderline,
+} from '#/lib/markdown'
+import { cn } from '#/lib/utils'
+
+/**
+ * The formatted view of a note or text-box body.
+ *
+ * Everything sizes and colours itself in `em` and `currentColor`: a body is
+ * drawn at the annotation's own font size and colour, and the box it sits in is
+ * often only a couple of centimetres wide, so nothing here may impose an
+ * absolute scale of its own.
+ *
+ * Raw HTML stays off — `react-markdown` ignores it without `rehype-raw`, and a
+ * body can be written by an agent reading an untrusted PDF.
+ */
+const proseClass = [
+  '[&>*]:my-[.4em] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+  '[&_h1]:text-[1.3em] [&_h2]:text-[1.15em] [&_h3]:text-[1.05em]',
+  '[&_h1]:font-[660] [&_h2]:font-[640] [&_h3]:font-[620]',
+  '[&_h4]:font-[620] [&_h5]:font-[620] [&_h6]:font-[620]',
+  '[&_strong]:font-[680]',
+  '[&_em]:italic',
+  '[&_u]:underline [&_u]:underline-offset-2',
+  '[&_del]:line-through',
+  '[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-[1.25em] [&_ol]:pl-[1.45em]',
+  '[&_li]:my-[.15em]',
+  '[&_li>ul]:my-0 [&_li>ol]:my-0',
+  // GFM task lists carry their own bullet in the checkbox.
+  '[&_li:has(>input[type=checkbox])]:list-none [&_li:has(>input[type=checkbox])]:-ml-[1.1em]',
+  '[&_input[type=checkbox]]:mr-[.35em] [&_input[type=checkbox]]:align-[-.05em]',
+  '[&_blockquote]:border-l-2 [&_blockquote]:border-current/25 [&_blockquote]:pl-[.5em] [&_blockquote]:opacity-80',
+  '[&_code]:rounded-[3px] [&_code]:bg-current/8 [&_code]:px-[.25em] [&_code]:font-mono [&_code]:text-[.92em]',
+  '[&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-current/8 [&_pre]:p-[.4em] [&_pre_code]:bg-transparent [&_pre_code]:p-0',
+  '[&_hr]:my-[.5em] [&_hr]:border-0 [&_hr]:border-t [&_hr]:border-current/30',
+  '[&_a]:underline [&_a]:underline-offset-2',
+  '[&_table]:w-full [&_table]:border-collapse',
+  '[&_th]:border [&_th]:border-current/20 [&_th]:px-[.35em] [&_th]:text-left [&_th]:font-[620]',
+  '[&_td]:border [&_td]:border-current/20 [&_td]:px-[.35em] [&_td]:align-top',
+].join(' ')
+
+function AnnotationMarkdownBody({ content, className }: { content: string; className?: string }) {
+  return (
+    <div className={cn(proseClass, className)}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkUnderline]}
+        components={{
+          a: ({ children, href }) => (
+            <a
+              href={href}
+              // The link may have been lifted out of the PDF, so it gets no
+              // opener handle back to this tab.
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+            >
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
+export const AnnotationMarkdown = memo(AnnotationMarkdownBody)
+
+/**
+ * Markdown editing shortcuts for a body textarea: ⌘B/⌘I/⌘U/⌘E, ⌘⇧X, and
+ * ⌘⇧8/⌘⇧7 for lists, plus Enter carrying a list marker onto the next line.
+ *
+ * The caret has to be restored after React has written the new value back into
+ * the textarea, so the range is parked in a ref and applied in a layout effect
+ * rather than set here — setting it now would be overwritten by the re-render.
+ */
+export function useMarkdownShortcuts(
+  ref: RefObject<HTMLTextAreaElement | null>,
+  body: string,
+  setBody: (value: string) => void,
+) {
+  const pendingSelection = useRef<[number, number] | null>(null)
+
+  useLayoutEffect(() => {
+    const selection = pendingSelection.current
+    if (!selection) return
+    pendingSelection.current = null
+    ref.current?.setSelectionRange(selection[0], selection[1])
+  }, [body, ref])
+
+  return (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const element = event.currentTarget
+    const state = { value: element.value, start: element.selectionStart, end: element.selectionEnd }
+    const command = markdownCommandForEvent(event)
+    const next = command
+      ? applyMarkdownCommand(state, command)
+      : event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey
+        ? continueList(state)
+        : null
+    if (!next) return
+    event.preventDefault()
+    pendingSelection.current = [next.start, next.end]
+    setBody(next.value)
+  }
+}

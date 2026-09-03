@@ -83,6 +83,10 @@ export function defaultStyle(style?: z.infer<typeof styleInputSchema>): Annotati
 
 const pageNumberSchema = z.number().int().positive().describe('One-based PDF page number.')
 
+/** Bodies are rendered as markdown, so a tool caller has to know it may use it. */
+const markdownHint =
+  'Rendered as markdown: **bold**, *italic*, ++underline++, ~~strikethrough~~, `code`, and `-`/`1.` lists.'
+
 export const annotationKindSchema = z.enum(['markup', 'ink', 'shape', 'text', 'note'])
 
 /**
@@ -134,7 +138,10 @@ export const createAnnotationSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('note'),
       pageNumber: pageNumberSchema,
-      body: z.string().max(annotationBodyLimits.note).describe('The comment text.'),
+      body: z
+        .string()
+        .max(annotationBodyLimits.note)
+        .describe(`The comment text. ${markdownHint}`),
       point: pointSchema.optional().describe('Where to pin the note, in normalized page coordinates.'),
       target: quoteAnchorSchema.optional().describe('Anchor the note to a quote instead of a point.'),
       style: styleInputSchema,
@@ -144,7 +151,7 @@ export const createAnnotationSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('text'),
       pageNumber: pageNumberSchema,
-      body: z.string().max(annotationBodyLimits.text),
+      body: z.string().max(annotationBodyLimits.text).describe(`The text to draw. ${markdownHint}`),
       bounds: rectSchema.describe('Normalized box the text is drawn into.'),
       style: styleInputSchema,
     })
@@ -227,7 +234,7 @@ export const updateAnnotationsInput = z.object({
           .max(annotationBodyLimits.note)
           .optional()
           .describe(
-            `Text and note annotations only. A note holds up to ${annotationBodyLimits.note} characters, a text box up to ${annotationBodyLimits.text}; the limit that applies depends on the annotation you are updating.`,
+            `Text and note annotations only. ${markdownHint} A note holds up to ${annotationBodyLimits.note} characters, a text box up to ${annotationBodyLimits.text}; the limit that applies depends on the annotation you are updating.`,
           ),
         resolved: z.boolean().optional().describe('Note annotations only.'),
         style: styleInputSchema,
