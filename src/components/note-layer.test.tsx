@@ -55,11 +55,11 @@ describe('note layer', () => {
       </div>,
     )
 
-    expect(screen.getByRole('textbox')).toBeTruthy()
+    expect(document.querySelector('[data-annotation-id="note-1"]')).toBeTruthy()
 
     fireEvent.pointerDown(screen.getByTestId('outside'))
 
-    await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+    await waitFor(() => expect(document.querySelector('[data-annotation-id="note-1"]')).toBeNull())
     expect(window.localStorage.getItem('mimir:sticky-note-collapsed:note-1')).toBe('true')
   })
 
@@ -68,7 +68,31 @@ describe('note layer', () => {
 
     render(<NoteLayer pageNumber={1} annotations={[note]} pageWidth={612} pageHeight={792} zoom={1} />)
 
+    expect(document.querySelector('[data-annotation-id="note-1"]')).toBeNull()
+    expect(screen.getByRole('button', { name: /open note/i })).toBeTruthy()
+  })
+
+  it('shows a note body as formatted markdown until it is clicked into', () => {
+    render(
+      <NoteLayer
+        pageNumber={1}
+        annotations={[{ ...note, body: '**Check** this' }]}
+        pageWidth={612}
+        pageHeight={792}
+        zoom={1}
+      />,
+    )
+
+    const preview = screen.getByLabelText('Note body')
+    expect(preview.querySelector('strong')?.textContent).toBe('Check')
     expect(screen.queryByRole('textbox')).toBeNull()
+
+    fireEvent.click(preview)
+
+    // The editor holds the markdown source itself, styled rather than stripped.
+    const editor = screen.getByRole('textbox')
+    expect(editor.textContent).toBe('**Check** this')
+    expect(editor.querySelector('.font-\\[680\\]')?.textContent).toBe('Check')
   })
 
   it('opens a note near the right edge toward the page instead of overflowing', () => {

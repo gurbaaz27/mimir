@@ -8,6 +8,7 @@ import {
   type AnnotationSidecar,
 } from './annotations'
 import { mergeTextQuads } from './annotation-geometry'
+import { markdownToPlainText } from './markdown'
 import type { DocumentRecord } from './db.client'
 
 function parseColor(color: string) {
@@ -183,7 +184,9 @@ export async function exportAnnotatedPdf(
         }
       } else if (annotation.kind === 'text') {
         const fontSize = annotation.style.fontSize ?? 12
-        page.drawText(annotation.body || ' ', {
+        // A flat run of glyphs is all `drawText` can lay down, so the markdown
+        // markers come off rather than printing as literal asterisks.
+        page.drawText(markdownToPlainText(annotation.body) || ' ', {
           x: annotation.bounds.x * width,
           // Text boxes are top-aligned in the editor. Their baseline must not
           // move when a user makes the box taller.
@@ -221,7 +224,7 @@ export async function exportAnnotatedPdf(
     drawHeading()
     let y = 700
     notes.forEach((note, index) => {
-      const text = `${index + 1}. Page ${note.pageNumber}  ${note.body || 'Empty note'}`
+      const text = `${index + 1}. Page ${note.pageNumber}  ${markdownToPlainText(note.body) || 'Empty note'}`
       const lines = text.match(/.{1,82}(?:\s|$)/g) ?? [text]
       const requiredHeight = lines.length * 15 + 18
       if (y - requiredHeight < 52) {

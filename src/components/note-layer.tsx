@@ -9,6 +9,7 @@ import {
   type ResizeHandle,
 } from '#/lib/annotation-geometry'
 import { type AnnotationMoveOverride, useEditorStore } from '#/lib/editor-store.client'
+import { markdownToPlainText } from '#/lib/markdown'
 import {
   noteAnchorRight,
   noteExpandedBounds,
@@ -16,6 +17,8 @@ import {
   readStickyNoteCollapsed,
 } from '#/lib/sticky-note-collapsed.client'
 import { cn } from '#/lib/utils'
+import { AnnotationMarkdown, sourceCaretFromPoint } from './annotation-markdown'
+import { focusMarkdownEditor, MarkdownEditor } from './markdown-editor'
 import { ResizeHandles } from './annotation-resize-handles'
 
 type NoteAnnotation = Extract<Annotation, { kind: 'note' }>
@@ -33,6 +36,9 @@ interface NoteLayerProps {
 const TEXT_BOX_LINE_HEIGHT = 1.28
 const TEXT_BOX_VERTICAL_PADDING = 4
 const TEXT_BOX_VERTICAL_BORDER = 2
+
+/** Shared by a note's editor and its formatted view so the text does not shift. */
+const noteBodyClass = 'min-h-0 w-full flex-1 bg-transparent px-2 pt-1.5 pb-3 font-sans text-[11px] leading-[1.42] font-medium text-[oklch(.24_.025_75)] [overflow-wrap:anywhere]'
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max))
@@ -74,6 +80,7 @@ function StickyNote({
   const update = useEditorStore((state) => state.updateAnnotation)
   const annotationDrag = useEditorStore((state) => state.annotationDrag)
   const [body, setBody] = useState(annotation.body)
+  const [editing, setEditing] = useState(false)
   const [collapsed, setCollapsedState] = useState(() => readStickyNoteCollapsed(annotation.id, annotation.resolved))
   const [expandedAnchorRight, setExpandedAnchorRight] = useState<boolean | null>(null)
   const [dragPoint, setDragPoint] = useState<Point | null>(null)
@@ -89,7 +96,8 @@ function StickyNote({
   } | null>(null)
   const resizeRef = useRef<{ pointerId: number; handle: ResizeHandle; bounds: NormalizedRect; moved: boolean } | null>(null)
   const resizeBoundsRef = useRef<NormalizedRect | null>(null)
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const pendingCaretRef = useRef<number | null>(null)
   const previousSelectedRef = useRef(selected)
   const previousResolvedRef = useRef(annotation.resolved)
 
@@ -110,9 +118,23 @@ function StickyNote({
     if (previousSelectedRef.current && !selected) setCollapsed(true)
     previousSelectedRef.current = selected
   }, [selected])
+  // A note with nothing in it opens straight into editing. One that already has
+  // a body opens to the formatted text and waits to be clicked into.
   useEffect(() => {
-    if (selected && !collapsed && !annotation.body) bodyRef.current?.focus()
+    if (selected && !collapsed && !annotation.body) setEditing(true)
   }, [selected, collapsed, annotation.body])
+  useEffect(() => {
+    if (collapsed) setEditing(false)
+  }, [collapsed])
+  // Editing opens where the body was clicked; anywhere else — a new note, the
+  // keyboard — it opens at the end.
+  useLayoutEffect(() => {
+    const input = bodyRef.current
+    if (!editing || !input) return
+    const caret = pendingCaretRef.current ?? body.length
+    pendingCaretRef.current = null
+    focusMarkdownEditor(input, caret)
+  }, [editing])
 
   const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
   const storedBounds = noteExpandedBounds(annotation, pageWidth, pageHeight, zoom)
@@ -309,8 +331,8 @@ function StickyNote({
           transform: `scale(${zoom})`,
           '--note-color': annotation.style.color,
         } as React.CSSProperties}
-        title={annotation.body || 'Empty note'}
-        aria-label={`Open note: ${annotation.body || 'empty note'}`}
+        title={markdownToPlainText(annotation.body) || 'Empty note'}
+        aria-label={`Open note: ${markdownToPlainText(annotation.body) || 'empty note'}`}
         onPointerDown={handleDragStart}
         onPointerMove={handleDragMove}
         onPointerUp={handleDragEnd}
@@ -378,16 +400,39 @@ function StickyNote({
             <ChevronDown size={11} />
           </button>
         </div>
-        <textarea
-          ref={bodyRef}
-          className="min-h-0 w-full flex-1 resize-none border-0 bg-transparent px-2 pt-1.5 pb-3 font-sans text-[11px] leading-[1.42] font-medium text-[oklch(.24_.025_75)] outline-none [overflow-wrap:anywhere] placeholder:text-[oklch(.35_.02_75/.5)]"
-          value={body}
-          placeholder="Add your thought…"
-          spellCheck={false}
-          onFocus={select}
-          onChange={(event) => setBody(event.target.value)}
-          onBlur={commitBody}
-        />
+        {editing ? (
+          <MarkdownEditor
+            ref={bodyRef}
+            className={cn(noteBodyClass, 'overflow-auto')}
+            value={body}
+            placeholder="Add your thought…"
+            ariaLabel="Note body"
+            onFocus={select}
+            onChange={setBody}
+            onBlur={() => {
+              setEditing(false)
+              commitBody()
+            }}
+          />
+        ) : (
+          <div
+            className={cn(noteBodyClass, 'cursor-text overflow-auto')}
+            tabIndex={0}
+            aria-label="Note body"
+            onPointerDown={(event) => {
+              pendingCaretRef.current = sourceCaretFromPoint(event.currentTarget, event.clientX, event.clientY, body)
+            }}
+            onFocus={() => {
+              select()
+              setEditing(true)
+            }}
+            onClick={() => setEditing(true)}
+          >
+            {body
+              ? <AnnotationMarkdown content={body} />
+              : <span className="text-[oklch(.35_.02_75/.5)]">Add your thought…</span>}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -416,19 +461,35 @@ function TextBox({
   const update = useEditorStore((state) => state.updateAnnotation)
   const annotationDrag = useEditorStore((state) => state.annotationDrag)
   const [body, setBody] = useState(annotation.body)
+  const [editing, setEditing] = useState(false)
   const [contentHeight, setContentHeight] = useState<number | null>(null)
   const [dragBounds, setDragBounds] = useState<NormalizedRect | null>(null)
   const [resizeBounds, setResizeBounds] = useState<NormalizedRect | null>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLDivElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
+  const pendingCaretRef = useRef<number | null>(null)
   const dragRef = useRef<{ x: number; y: number; moved: boolean; group: boolean } | null>(null)
   const dragBoundsRef = useRef<NormalizedRect | null>(null)
   const resizeRef = useRef<{ pointerId: number; handle: ResizeHandle; bounds: NormalizedRect; moved: boolean } | null>(null)
   const resizeBoundsRef = useRef<NormalizedRect | null>(null)
 
   useEffect(() => setBody(annotation.body), [annotation.body])
+  // An empty box is one that was just placed, so it opens ready to type in.
+  // Otherwise the page shows the formatted body until it is clicked into, and
+  // losing the selection ends the edit.
   useEffect(() => {
-    if (selected && !annotation.body) inputRef.current?.focus()
+    if (selected && !annotation.body) setEditing(true)
   }, [selected, annotation.body])
+  useEffect(() => {
+    if (!selected) setEditing(false)
+  }, [selected])
+  useLayoutEffect(() => {
+    const input = inputRef.current
+    if (!editing || !input) return
+    const caret = pendingCaretRef.current ?? body.length
+    pendingCaretRef.current = null
+    focusMarkdownEditor(input, caret)
+  }, [editing])
 
   const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
   const baseBounds = {
@@ -442,21 +503,30 @@ function TextBox({
   }
 
   useLayoutEffect(() => {
-    const input = inputRef.current
-    if (!input || !pageHeight || annotation.autoHeight === false) return
+    if (!pageHeight || annotation.autoHeight === false) return
 
-    // Let the textarea report its natural height instead of the current box
-    // height. This includes wrapped lines as well as explicit newlines.
-    const previousHeight = input.style.height
-    input.style.height = '0px'
-    const requiredHeight = input.scrollHeight + TEXT_BOX_VERTICAL_BORDER
-    input.style.height = previousHeight
+    // Whichever view is mounted reports the height the box needs. The editor
+    // has to be zeroed first so it reports its natural height rather than the
+    // current box height — that covers wrapped lines as well as explicit
+    // newlines — while the formatted body already sits in an auto-height wrapper.
+    const input = inputRef.current
+    let requiredHeight: number
+    if (input) {
+      const previousHeight = input.style.height
+      input.style.height = '0px'
+      requiredHeight = input.scrollHeight + TEXT_BOX_VERTICAL_BORDER
+      input.style.height = previousHeight
+    } else if (previewRef.current) {
+      requiredHeight = previewRef.current.offsetHeight + TEXT_BOX_VERTICAL_BORDER
+    } else {
+      return
+    }
 
     const fontSize = (annotation.style.fontSize ?? 12) * zoom
     const minimumHeight = (fontSize * TEXT_BOX_LINE_HEIGHT + TEXT_BOX_VERTICAL_PADDING + TEXT_BOX_VERTICAL_BORDER) / pageHeight
     const nextHeight = Math.min(1, Math.max(minimumHeight, requiredHeight / pageHeight))
     setContentHeight((current) => current === nextHeight ? current : nextHeight)
-  }, [annotation.autoHeight, annotation.bounds.height, annotation.bounds.width, annotation.style.fontSize, body, pageHeight, pageWidth, zoom])
+  }, [annotation.autoHeight, annotation.bounds.height, annotation.bounds.width, annotation.style.fontSize, body, editing, pageHeight, pageWidth, zoom])
 
   const handleDragStart = (event: PointerEvent<HTMLButtonElement>) => {
     event.stopPropagation()
@@ -574,6 +644,13 @@ function TextBox({
     void update(annotation.id, { body, ...(nextBounds ? { bounds: nextBounds } : {}) } as Partial<Annotation>)
   }
 
+  const bodyStyle = {
+    color: annotation.style.color,
+    opacity: annotation.style.opacity,
+    fontSize: (annotation.style.fontSize ?? 12) * zoom,
+    textAlign: annotation.alignment,
+  } as const
+
   return (
     <div
       className="group/text-box absolute"
@@ -596,26 +673,51 @@ function TextBox({
           onPointerUp={handleResizeEnd}
         />
       )}
-      <textarea
-        ref={inputRef}
-        className={cn(
-          'h-full min-h-0 w-full resize-none overflow-hidden rounded border border-transparent bg-transparent px-[3px] py-0.5 font-sans leading-[1.28] outline-none [overflow-wrap:anywhere]',
-          selected && 'bg-[oklch(1_0_0/.6)]',
-          (annotation.autoHeight === false || resizeBounds) && 'overflow-auto',
-        )}
-        value={body}
-        placeholder="Type on the page…"
-        spellCheck={false}
-        style={{
-          color: annotation.style.color,
-          opacity: annotation.style.opacity,
-          fontSize: (annotation.style.fontSize ?? 12) * zoom,
-          textAlign: annotation.alignment,
-        }}
-        onFocus={() => setSelected(annotation.id)}
-        onChange={(event) => setBody(event.target.value)}
-        onBlur={commit}
-      />
+      {editing ? (
+        <MarkdownEditor
+          ref={inputRef}
+          className={cn(
+            'h-full min-h-0 w-full overflow-hidden rounded border border-transparent bg-transparent px-[3px] py-0.5 font-sans leading-[1.28] [overflow-wrap:anywhere]',
+            selected && 'bg-[oklch(1_0_0/.6)]',
+            (annotation.autoHeight === false || resizeBounds) && 'overflow-auto',
+          )}
+          value={body}
+          placeholder="Type on the page…"
+          ariaLabel="Text box body"
+          style={bodyStyle}
+          onFocus={() => setSelected(annotation.id)}
+          onChange={setBody}
+          onBlur={() => {
+            setEditing(false)
+            commit()
+          }}
+        />
+      ) : (
+        <div
+          className={cn(
+            'h-full min-h-0 w-full cursor-text overflow-hidden rounded border border-transparent bg-transparent font-sans leading-[1.28] outline-none [overflow-wrap:anywhere]',
+            selected && 'bg-[oklch(1_0_0/.6)]',
+            (annotation.autoHeight === false || resizeBounds) && 'overflow-auto',
+          )}
+          style={bodyStyle}
+          tabIndex={0}
+          aria-label="Text box body"
+          onPointerDown={(event) => {
+            pendingCaretRef.current = sourceCaretFromPoint(event.currentTarget, event.clientX, event.clientY, body)
+          }}
+          onFocus={() => {
+            setSelected(annotation.id)
+            setEditing(true)
+          }}
+          onClick={() => setEditing(true)}
+        >
+          <div ref={previewRef} className="px-[3px] py-0.5">
+            {body
+              ? <AnnotationMarkdown content={body} />
+              : <span className="opacity-45">Type on the page…</span>}
+          </div>
+        </div>
+      )}
       <button
         type="button"
         className={cn(
