@@ -68,23 +68,23 @@ describe('annotation markdown', () => {
     }
   }
 
-  it('maps a rendered offset back onto the markdown source', () => {
-    // Two characters into the rendered word "bold", which is six characters
-    // into the source once `a ` and the opening `**` are counted.
-    const caret = caretAt('a **bold** tail', (body) => ({
-      node: body.querySelector('strong')?.firstChild as Node,
-      offset: 2,
+  it('maps a click in a body that renders to exactly its own source', () => {
+    // The caret sits after "plain ", six characters into a body with nothing
+    // hidden in it.
+    const caret = caretAt('plain body', (body) => ({
+      node: body.querySelector('p')?.firstChild as Node,
+      offset: 6,
     }))
     expect(caret).toBe(6)
   })
 
-  it('steps over a character reference as one rendered character', () => {
-    // The caret sits after the rendered `©`, which is `&copy;` in the source.
-    const caret = caretAt('a &copy; b', (body) => ({
-      node: body.querySelector('p')?.firstChild as Node,
-      offset: 4,
-    }))
-    expect(caret).toBe(9)
+  it('refuses to map a click once markdown has hidden characters', () => {
+    // `[a](a)a` renders as "aa": aligning the two would anchor the trailing
+    // character to the link destination and open the editor inside the syntax.
+    for (const source of ['[a](a)a', 'a **bold** tail', 'a &copy; b']) {
+      const caret = caretAt(source, (body) => ({ node: body.querySelector('p') as Node, offset: 0 }))
+      expect(caret).toBeNull()
+    }
   })
 
   it('falls back to no position when the browser resolves no caret', () => {

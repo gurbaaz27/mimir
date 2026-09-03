@@ -98,18 +98,17 @@ function renderedOffsetFromPoint(container: HTMLElement, clientX: number, client
   return range.toString().length
 }
 
-/** `&amp;`, `&#38;`, `&#x26;` — a run of source standing for one rendered character. */
-const characterReference = /^&(?:#\d+|#[xX][\da-fA-F]+|[a-zA-Z][\da-zA-Z]*);/
-
 /**
  * Where a click on the formatted body lands in the markdown source, so that
- * clicking into the middle of a note puts the caret there rather than at the end.
+ * clicking into a note opens the editor there rather than at the end.
  *
- * Every visible character is in the source too, with the markers interleaved
- * around it, so walking the two together maps one offset onto the other without
- * anyone having to keep a position map. Returns null when the point cannot be
- * placed — the browser resolved no caret, or the two ran out of step — leaving
- * the caller to fall back to the end of the body.
+ * Only a body that renders to exactly its own source can be mapped. The moment
+ * markdown hides characters — a marker, a link destination, a character
+ * reference — the rendered text stops lining up with the source, and there is
+ * no sound way to realign them from out here: matching them character by
+ * character just as readily anchors a rendered letter to a hidden one, opening
+ * the editor inside the syntax. So this maps what it can prove and returns null
+ * otherwise, leaving the caller its own end-of-body default.
  */
 export function sourceCaretFromPoint(
   container: HTMLElement,
@@ -117,27 +116,8 @@ export function sourceCaretFromPoint(
   clientY: number,
   source: string,
 ) {
-  const rendered = renderedOffsetFromPoint(container, clientX, clientY)
-  if (rendered === null) return null
-  const text = container.textContent ?? ''
-  let sourceIndex = 0
-  let textIndex = 0
-  while (textIndex < rendered && sourceIndex < source.length) {
-    // A character reference is several source characters standing for the one
-    // the reader sees, so it is stepped over as a unit — and before the plain
-    // comparison, or `&amp;apple` would align its `a` against the reference's.
-    const reference = source[sourceIndex] === '&' ? characterReference.exec(source.slice(sourceIndex)) : null
-    if (reference) {
-      sourceIndex += reference[0].length
-      textIndex += 1
-      continue
-    }
-    if (source[sourceIndex] === text[textIndex]) textIndex += 1
-    sourceIndex += 1
-  }
-  // The walk only holds while the rendered text is a subsequence of the source.
-  // Where it is not, the caller's own default beats a confidently wrong caret.
-  return textIndex < rendered ? null : sourceIndex
+  if (container.textContent !== source) return null
+  return renderedOffsetFromPoint(container, clientX, clientY)
 }
 
 /**
