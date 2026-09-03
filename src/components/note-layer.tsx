@@ -1,8 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Check, ChevronDown } from 'lucide-react'
 import type { Annotation, NormalizedRect, Point } from '#/lib/annotations'
-import { defaultNoteSizePx, resizeRectFromHandle, type ResizeHandle } from '#/lib/annotation-geometry'
-import { useEditorStore } from '#/lib/editor-store.client'
+import {
+  expandedNotePlacement,
+  notePinBounds,
+  notePinSizePx,
+  resizeRectFromHandle,
+  type ResizeHandle,
+} from '#/lib/annotation-geometry'
+import { type AnnotationMoveOverride, useEditorStore } from '#/lib/editor-store.client'
+import {
+  noteAnchorRight,
+  noteExpandedBounds,
+  persistStickyNoteCollapsed,
+  readStickyNoteCollapsed,
+} from '#/lib/sticky-note-collapsed.client'
 import { cn } from '#/lib/utils'
 import { ResizeHandles } from './annotation-resize-handles'
 
@@ -17,12 +29,10 @@ interface NoteLayerProps {
   zoom: number
 }
 
-/** Base sticky sizes in CSS pixels at 100% zoom; the note is scaled with the page. */
-const PIN_SIZE = 22
+/** Text box metrics in CSS pixels at 100% zoom; the box is scaled with the page. */
 const TEXT_BOX_LINE_HEIGHT = 1.28
 const TEXT_BOX_VERTICAL_PADDING = 4
 const TEXT_BOX_VERTICAL_BORDER = 2
-const stickyNoteCollapsedStoragePrefix = 'mimir:sticky-note-collapsed:'
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max))
@@ -39,38 +49,20 @@ function pointInNoteLayer(event: { clientX: number; clientY: number; currentTarg
   }
 }
 
-function readStickyNoteCollapsed(id: string, fallback: boolean) {
-  if (typeof window === 'undefined') return fallback
-  try {
-    const saved = window.localStorage.getItem(`${stickyNoteCollapsedStoragePrefix}${id}`)
-    if (saved === 'true') return true
-    if (saved === 'false') return false
-  } catch {
-    // The note still works for this session when storage is unavailable.
-  }
-  return fallback
-}
-
-function persistStickyNoteCollapsed(id: string, collapsed: boolean) {
-  try {
-    window.localStorage.setItem(`${stickyNoteCollapsedStoragePrefix}${id}`, String(collapsed))
-  } catch {
-    // The note still works for this session when storage is unavailable.
-  }
-}
-
 function StickyNote({
   annotation,
   selected,
   pageWidth,
   pageHeight,
   zoom,
+  getMoveOverrides,
 }: {
   annotation: NoteAnnotation
   selected: boolean
   pageWidth: number
   pageHeight: number
   zoom: number
+  getMoveOverrides: () => Record<string, AnnotationMoveOverride>
 }) {
   const tool = useEditorStore((state) => state.tool)
   const selectedIds = useEditorStore((state) => state.selectedAnnotationIds)
@@ -83,10 +75,18 @@ function StickyNote({
   const annotationDrag = useEditorStore((state) => state.annotationDrag)
   const [body, setBody] = useState(annotation.body)
   const [collapsed, setCollapsedState] = useState(() => readStickyNoteCollapsed(annotation.id, annotation.resolved))
+  const [expandedAnchorRight, setExpandedAnchorRight] = useState<boolean | null>(null)
   const [dragPoint, setDragPoint] = useState<Point | null>(null)
   const [resizeBounds, setResizeBounds] = useState<NormalizedRect | null>(null)
   const suppressClickRef = useRef(false)
-  const dragRef = useRef<{ x: number; y: number; moved: boolean; group: boolean } | null>(null)
+  const dragRef = useRef<{
+    x: number
+    y: number
+    startPoint: Point
+    moved: boolean
+    group: boolean
+    anchorRight: boolean
+  } | null>(null)
   const resizeRef = useRef<{ pointerId: number; handle: ResizeHandle; bounds: NormalizedRect; moved: boolean } | null>(null)
   const resizeBoundsRef = useRef<NormalizedRect | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
@@ -95,6 +95,7 @@ function StickyNote({
 
   const setCollapsed = (nextCollapsed: boolean) => {
     setCollapsedState(nextCollapsed)
+    if (nextCollapsed) setExpandedAnchorRight(null)
     persistStickyNoteCollapsed(annotation.id, nextCollapsed)
   }
 
@@ -114,19 +115,30 @@ function StickyNote({
   }, [selected, collapsed, annotation.body])
 
   const groupOffset = annotationDrag?.ids.includes(annotation.id) ? annotationDrag : null
-  const storedBounds = annotation.bounds ?? {
-    x: annotation.point.x,
-    y: annotation.point.y,
-    width: Math.min(1, defaultNoteSizePx.width * zoom / pageWidth),
-    height: Math.min(1, defaultNoteSizePx.height * zoom / pageHeight),
-  }
+  const storedBounds = noteExpandedBounds(annotation, pageWidth, pageHeight, zoom)
+  const pin = notePinBounds(annotation.point, pageWidth, pageHeight, zoom)
+  const storedAnchorRight = noteAnchorRight(annotation, pageWidth, zoom)
   const point = dragPoint ?? {
-    x: storedBounds.x + (groupOffset?.dx ?? 0),
-    y: storedBounds.y + (groupOffset?.dy ?? 0),
+    x: annotation.point.x + (groupOffset?.dx ?? 0),
+    y: annotation.point.y + (groupOffset?.dy ?? 0),
   }
-  const displayedBounds = resizeBounds ?? { ...storedBounds, x: point.x, y: point.y }
-  const width = collapsed ? PIN_SIZE : displayedBounds.width * pageWidth / zoom
-  const height = collapsed ? PIN_SIZE : displayedBounds.height * pageHeight / zoom
+  // An open note holds the side it opened on for as long as it stays open, so
+  // it does not flip out from under the pointer mid-drag or mid-resize.
+  const expandedPlacement = expandedNotePlacement(
+    point,
+    storedBounds,
+    pageWidth,
+    pageHeight,
+    zoom,
+    collapsed ? undefined : (expandedAnchorRight ?? storedAnchorRight),
+  )
+  const displayedBounds = resizeBounds ?? {
+    ...storedBounds,
+    x: expandedPlacement.left / pageWidth,
+    y: expandedPlacement.top / pageHeight,
+  }
+  const width = collapsed ? notePinSizePx : displayedBounds.width * pageWidth / zoom
+  const height = collapsed ? notePinSizePx : displayedBounds.height * pageHeight / zoom
   const left = clamp((collapsed ? point.x : displayedBounds.x) * pageWidth, 0, Math.max(0, pageWidth - width * zoom))
   const top = clamp((collapsed ? point.y : displayedBounds.y) * pageHeight, 0, Math.max(0, pageHeight - height * zoom))
 
@@ -141,18 +153,40 @@ function StickyNote({
   const handleDragStart = (event: PointerEvent<HTMLElement>) => {
     event.stopPropagation()
     suppressClickRef.current = false
+    if (!collapsed) setExpandedAnchorRight(expandedPlacement.alignRight)
     if (tool === 'select') {
       const ids = selectedIds.includes(annotation.id) ? selectedIds : [annotation.id]
       if (!selectedIds.includes(annotation.id)) setSelectedAnnotations([annotation.id])
       event.preventDefault()
       event.currentTarget.setPointerCapture(event.pointerId)
-      dragRef.current = { x: event.clientX, y: event.clientY, moved: false, group: true }
-      beginAnnotationDrag(ids)
+      dragRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+        startPoint: point,
+        moved: false,
+        group: true,
+        anchorRight: !collapsed && expandedPlacement.alignRight,
+      }
+      const dragOverrides = getMoveOverrides()
+      if (collapsed && !dragOverrides[annotation.id]) {
+        dragOverrides[annotation.id] = {
+          visibleBounds: { ...pin, x: point.x, y: point.y },
+          expandedBounds: storedBounds,
+        }
+      }
+      beginAnnotationDrag(ids, Object.keys(dragOverrides).length ? dragOverrides : undefined)
       return
     }
     select()
     event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = { x: event.clientX, y: event.clientY, moved: false, group: false }
+    dragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      startPoint: point,
+      moved: false,
+      group: false,
+      anchorRight: !collapsed && expandedPlacement.alignRight,
+    }
   }
 
   const handleDragMove = (event: PointerEvent<HTMLElement>) => {
@@ -166,9 +200,12 @@ function StickyNote({
     if (drag.group) {
       updateAnnotationDrag(dx / pageWidth, dy / pageHeight)
     } else {
+      const widthInPage = collapsed ? pin.width : storedBounds.width
+      const minX = !collapsed && drag.anchorRight ? Math.max(0, widthInPage - pin.width) : 0
+      const maxX = collapsed || drag.anchorRight ? 1 - pin.width : 1 - widthInPage
       setDragPoint({
-        x: clamp(storedBounds.x + dx / pageWidth, 0, 1 - storedBounds.width),
-        y: clamp(storedBounds.y + dy / pageHeight, 0, 1 - storedBounds.height),
+        x: clamp(drag.startPoint.x + dx / pageWidth, minX, maxX),
+        y: clamp(drag.startPoint.y + dy / pageHeight, 0, collapsed ? 1 - pin.height : 1 - storedBounds.height),
       })
     }
   }
@@ -180,9 +217,20 @@ function StickyNote({
     if (drag?.group) {
       void finishAnnotationDrag()
     } else if (drag?.moved && dragPoint) {
+      // A pin dropped somewhere new re-picks the side it will open on; an open
+      // note keeps the side it was dragged by.
+      const dropped = expandedNotePlacement(dragPoint, storedBounds, pageWidth, pageHeight, zoom)
+      const nextBounds = collapsed
+        ? { ...storedBounds, x: dropped.left / pageWidth, y: dropped.top / pageHeight }
+        : {
+            ...storedBounds,
+            x: drag.anchorRight ? dragPoint.x + pin.width - storedBounds.width : dragPoint.x,
+            y: dragPoint.y,
+          }
       void update(annotation.id, {
         point: dragPoint,
-        bounds: { ...storedBounds, x: dragPoint.x, y: dragPoint.y },
+        bounds: nextBounds,
+        anchorRight: collapsed ? dropped.alignRight : drag.anchorRight,
       } as Partial<Annotation>).finally(() => setDragPoint(null))
     } else {
       setDragPoint(null)
@@ -192,6 +240,7 @@ function StickyNote({
   const handleResizeStart = (event: PointerEvent<HTMLButtonElement>, handle: ResizeHandle) => {
     event.stopPropagation()
     event.preventDefault()
+    setExpandedAnchorRight(expandedPlacement.alignRight)
     event.currentTarget.setPointerCapture(event.pointerId)
     resizeRef.current = { pointerId: event.pointerId, handle, bounds: displayedBounds, moved: false }
     resizeBoundsRef.current = displayedBounds
@@ -230,9 +279,14 @@ function StickyNote({
       setResizeBounds(null)
       return
     }
+    const nextPoint = {
+      x: expandedPlacement.alignRight ? nextBounds.x + nextBounds.width - pin.width : nextBounds.x,
+      y: nextBounds.y,
+    }
     void update(annotation.id, {
-      point: { x: nextBounds.x, y: nextBounds.y },
+      point: nextPoint,
       bounds: nextBounds,
+      anchorRight: expandedPlacement.alignRight,
     } as Partial<Annotation>).finally(() => {
       resizeBoundsRef.current = null
       setResizeBounds(null)
@@ -250,8 +304,8 @@ function StickyNote({
         style={{
           left,
           top,
-          width: PIN_SIZE,
-          height: PIN_SIZE,
+          width: notePinSizePx,
+          height: notePinSizePx,
           transform: `scale(${zoom})`,
           '--note-color': annotation.style.color,
         } as React.CSSProperties}
@@ -266,6 +320,7 @@ function StickyNote({
             suppressClickRef.current = false
             return
           }
+          setExpandedAnchorRight(expandedPlacement.alignRight)
           setCollapsed(false)
           select()
         }}
@@ -589,6 +644,26 @@ function TextBox({
 export function NoteLayer({ pageNumber, annotations, pageWidth, pageHeight, zoom }: NoteLayerProps) {
   const tool = useEditorStore((state) => state.tool)
   const selectedIds = useEditorStore((state) => state.selectedAnnotationIds)
+  /**
+   * Footprints for the collapsed notes in the current selection, so a group
+   * drag clamps on their pins rather than the panels they would open to.
+   *
+   * Read at drag time, not memoized: collapsed state lives in local storage and
+   * in each note's own state, neither of which this list can depend on.
+   */
+  const getMoveOverrides = () => {
+    const overrides: Record<string, AnnotationMoveOverride> = {}
+    for (const annotation of annotations) {
+      if (annotation.kind !== 'note' || annotation.pageNumber !== pageNumber) continue
+      if (!selectedIds.includes(annotation.id)) continue
+      if (!readStickyNoteCollapsed(annotation.id, annotation.resolved)) continue
+      overrides[annotation.id] = {
+        visibleBounds: notePinBounds(annotation.point, pageWidth, pageHeight, zoom),
+        expandedBounds: noteExpandedBounds(annotation, pageWidth, pageHeight, zoom),
+      }
+    }
+    return overrides
+  }
   const pageAnnotations = useMemo(
     () =>
       annotations.filter(
@@ -611,6 +686,7 @@ export function NoteLayer({ pageNumber, annotations, pageWidth, pageHeight, zoom
             pageWidth={pageWidth}
             pageHeight={pageHeight}
             zoom={zoom}
+            getMoveOverrides={getMoveOverrides}
           />
         ) : (
           <TextBox

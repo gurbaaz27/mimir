@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { constrainDrawingEnd, mergeTextQuads, pointForResizeHandle, resizeRectFromHandle } from './annotation-geometry'
+import {
+  constrainDrawingEnd,
+  defaultNoteBounds,
+  expandedNotePlacement,
+  mergeTextQuads,
+  notePinSizePx,
+  pointForResizeHandle,
+  resizeRectFromHandle,
+} from './annotation-geometry'
 
 describe('text markup geometry', () => {
   it('merges overlapping fragments on the same line without merging separate lines', () => {
@@ -153,5 +161,47 @@ describe('annotation resize geometry', () => {
     expect(resized.height).toBeCloseTo(12 / 800)
     expect(resized.x + resized.width).toBeLessThanOrEqual(1)
     expect(resized.y + resized.height).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('sticky note placement', () => {
+  const pageWidth = 612
+  const pageHeight = 792
+  const size = defaultNoteBounds({ x: 0, y: 0 }, pageWidth, pageHeight, 1)
+
+  it('opens toward the page when the panel would overflow the right margin', () => {
+    const placement = expandedNotePlacement({ x: 0.9, y: 0.2 }, size, pageWidth, pageHeight, 1)
+
+    expect(placement.alignRight).toBe(true)
+    // The panel's right edge meets the pin's right edge, so the pin stays put.
+    expect(placement.left + size.width * pageWidth).toBeCloseTo(0.9 * pageWidth + notePinSizePx)
+  })
+
+  it('opens from the pin whenever the panel still fits to the right', () => {
+    const placement = expandedNotePlacement({ x: 0.2, y: 0.2 }, size, pageWidth, pageHeight, 1)
+
+    expect(placement.alignRight).toBe(false)
+    expect(placement.left).toBeCloseTo(0.2 * pageWidth)
+  })
+
+  it('does not flip a panel whose right edge only reaches the margin', () => {
+    // The panel is measured from the pin's left edge, so a note that ends flush
+    // with the margin fits; testing from the pin's right edge flipped it early.
+    const anchor = { x: (pageWidth - size.width * pageWidth) / pageWidth, y: 0.2 }
+
+    expect(expandedNotePlacement(anchor, size, pageWidth, pageHeight, 1).alignRight).toBe(false)
+  })
+
+  it('keeps a caller-chosen side instead of re-picking one', () => {
+    expect(expandedNotePlacement({ x: 0.2, y: 0.2 }, size, pageWidth, pageHeight, 1, true).alignRight).toBe(true)
+    expect(expandedNotePlacement({ x: 0.9, y: 0.2 }, size, pageWidth, pageHeight, 1, false).alignRight).toBe(false)
+  })
+
+  it('stays on the page when the panel is too wide to open either way', () => {
+    const wide = { x: 0, y: 0, width: 1, height: 0.1 }
+    const placement = expandedNotePlacement({ x: 0.9, y: 0.95 }, wide, pageWidth, pageHeight, 1)
+
+    expect(placement.left).toBe(0)
+    expect(placement.top).toBeCloseTo(pageHeight - 0.1 * pageHeight)
   })
 })

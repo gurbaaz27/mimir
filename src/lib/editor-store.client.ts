@@ -15,6 +15,7 @@ import {
   type MarkupType,
   type ShapeType,
 } from './annotations'
+import { noteOpensLeftward } from './annotation-geometry'
 
 export type EditorTool =
   | 'select'
@@ -31,10 +32,21 @@ interface HistoryEntry {
   after: Array<Annotation>
 }
 
+/**
+ * What a note actually occupies during a move, when that differs from its
+ * stored bounds. A collapsed note is a pin, so the pin is what clamps against
+ * the page edge; the panel it would open to is carried along and re-placed.
+ */
+export interface AnnotationMoveOverride {
+  visibleBounds: NonNullable<ReturnType<typeof annotationBounds>>
+  expandedBounds: NonNullable<ReturnType<typeof annotationBounds>>
+}
+
 interface AnnotationDrag {
   ids: Array<string>
   dx: number
   dy: number
+  boundsOverrides?: Record<string, AnnotationMoveOverride>
 }
 
 interface EditorState {
@@ -71,7 +83,7 @@ interface EditorState {
   setRotation: (rotation: number) => void
   setSelectedAnnotation: (id: string | null) => void
   setSelectedAnnotations: (ids: Array<string>) => void
-  beginAnnotationDrag: (ids: Array<string>) => void
+  beginAnnotationDrag: (ids: Array<string>, boundsOverrides?: Record<string, AnnotationMoveOverride>) => void
   updateAnnotationDrag: (dx: number, dy: number) => void
   finishAnnotationDrag: () => Promise<void>
   setSidebarOpen: (open: boolean) => void
@@ -98,7 +110,12 @@ interface EditorState {
     patch: AnnotationPatch,
     author?: AnnotationAuthor,
   ) => Promise<Annotation>
-  moveAnnotations: (ids: Array<string>, dx: number, dy: number) => Promise<void>
+  moveAnnotations: (
+    ids: Array<string>,
+    dx: number,
+    dy: number,
+    boundsOverrides?: Record<string, AnnotationMoveOverride>,
+  ) => Promise<void>
   deleteAnnotations: (ids: Array<string>, label?: string) => Promise<void>
   undo: () => Promise<void>
   redo: () => Promise<void>
@@ -173,6 +190,54 @@ function applyChangeToList(
   return [...current.filter((annotation) => !changedIds.has(annotation.id)), ...after].sort(
     (a, b) => a.pageNumber - b.pageNumber || a.createdAt.localeCompare(b.createdAt),
   )
+}
+
+function clampAnnotationDelta(
+  annotations: Array<Annotation>,
+  ids: Array<string>,
+  dx: number,
+  dy: number,
+  boundsOverrides?: Record<string, AnnotationMoveOverride>,
+) {
+  const idSet = new Set(ids)
+  const bounds = annotations
+    .filter((annotation) => idSet.has(annotation.id))
+    .map((annotation) => boundsOverrides?.[annotation.id]?.visibleBounds ?? annotationBounds(annotation))
+    .filter((value): value is NonNullable<typeof value> => value !== null)
+  if (!bounds.length) return { dx, dy }
+  const minX = Math.min(...bounds.map((bound) => bound.x))
+  const minY = Math.min(...bounds.map((bound) => bound.y))
+  const maxX = Math.max(...bounds.map((bound) => bound.x + bound.width))
+  const maxY = Math.max(...bounds.map((bound) => bound.y + bound.height))
+  return {
+    dx: Math.max(-minX, Math.min(1 - maxX, dx)),
+    dy: Math.max(-minY, Math.min(1 - maxY, dy)),
+  }
+}
+
+function translateAnnotationForMove(
+  annotation: Annotation,
+  dx: number,
+  dy: number,
+  override: AnnotationMoveOverride | undefined,
+) {
+  const moved = translateAnnotation(annotation, dx, dy)
+  if (!override || moved.kind !== 'note') return moved
+
+  const bounds = moved.bounds ?? override.expandedBounds
+  // A pin dropped somewhere new re-picks the side its panel opens on, so a
+  // group move lands where dragging the note by itself would have put it.
+  const anchorRight = noteOpensLeftward(moved.point.x, override.visibleBounds.width, bounds.width)
+  const x = anchorRight ? moved.point.x + override.visibleBounds.width - bounds.width : moved.point.x
+  return {
+    ...moved,
+    anchorRight,
+    bounds: {
+      ...bounds,
+      x: Math.max(0, Math.min(1 - bounds.width, x)),
+      y: Math.max(0, Math.min(1 - bounds.height, moved.point.y)),
+    },
+  }
 }
 
 export const editorStore = createStore<EditorState>((set, get) => ({
@@ -345,18 +410,28 @@ export const editorStore = createStore<EditorState>((set, get) => ({
       annotationDrag: null,
     })
   },
-  beginAnnotationDrag: (ids) => {
+  beginAnnotationDrag: (ids, boundsOverrides) => {
     const uniqueIds = [...new Set(ids)]
-    if (uniqueIds.length) set({ annotationDrag: { ids: uniqueIds, dx: 0, dy: 0 } })
+    if (uniqueIds.length) set({ annotationDrag: { ids: uniqueIds, dx: 0, dy: 0, boundsOverrides } })
   },
   updateAnnotationDrag: (dx, dy) =>
-    set((state) => state.annotationDrag ? { annotationDrag: { ...state.annotationDrag, dx, dy } } : state),
+    set((state) => {
+      if (!state.annotationDrag) return state
+      const next = clampAnnotationDelta(
+        state.annotations,
+        state.annotationDrag.ids,
+        dx,
+        dy,
+        state.annotationDrag.boundsOverrides,
+      )
+      return { annotationDrag: { ...state.annotationDrag, ...next } }
+    }),
   finishAnnotationDrag: async () => {
     const drag = get().annotationDrag
     if (!drag) return
     try {
       if (Math.abs(drag.dx) > 0.0001 || Math.abs(drag.dy) > 0.0001) {
-        await get().moveAnnotations(drag.ids, drag.dx, drag.dy)
+        await get().moveAnnotations(drag.ids, drag.dx, drag.dy, drag.boundsOverrides)
       }
     } finally {
       set({ annotationDrag: null })
@@ -423,21 +498,15 @@ export const editorStore = createStore<EditorState>((set, get) => ({
     return updated
   },
 
-  moveAnnotations: async (ids, dx, dy) => {
+  moveAnnotations: async (ids, dx, dy, boundsOverrides) => {
     const idSet = new Set(ids)
     const before = get().annotations.filter((annotation) => idSet.has(annotation.id))
     if (!before.length) throw new Error('No matching annotations were found.')
-    const bounds = before.map(annotationBounds).filter((value): value is NonNullable<typeof value> => value !== null)
-    const minX = bounds.length ? Math.min(...bounds.map((bound) => bound.x)) : 0
-    const minY = bounds.length ? Math.min(...bounds.map((bound) => bound.y)) : 0
-    const maxX = bounds.length ? Math.max(...bounds.map((bound) => bound.x + bound.width)) : 1
-    const maxY = bounds.length ? Math.max(...bounds.map((bound) => bound.y + bound.height)) : 1
-    const actualDx = Math.max(-minX, Math.min(1 - maxX, dx))
-    const actualDy = Math.max(-minY, Math.min(1 - maxY, dy))
+    const { dx: actualDx, dy: actualDy } = clampAnnotationDelta(before, ids, dx, dy, boundsOverrides)
     if (!actualDx && !actualDy) return
     const after = before.map((annotation) =>
       annotationSchema.parse({
-        ...translateAnnotation(annotation, actualDx, actualDy),
+        ...translateAnnotationForMove(annotation, actualDx, actualDy, boundsOverrides?.[annotation.id]),
         lastModifiedBy: 'human',
         updatedAt: new Date().toISOString(),
       }),
